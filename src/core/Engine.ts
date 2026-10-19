@@ -71,7 +71,9 @@ export class Engine {
   static async create(params: LaasParams, hooks: LaasHooks): Promise<Engine> {
     const renderer = new WebGPURenderer({
       antialias: false,
-      trackTimestamp: true,
+      // timestamp queries + their per-frame resolves serialise the pipeline
+      // (an ~80 ms hitch every few frames), so profiling is opt-in
+      trackTimestamp: params.prof,
       requiredLimits: hooks.diag ? buildRequiredLimits(hooks.diag) : {},
     });
     await renderer.init();
@@ -99,7 +101,8 @@ export class Engine {
     container.appendChild(renderer.domElement);
 
     const engine = new Engine(renderer, params, hooks);
-    engine.timestampsSupported = (hooks.diag?.features ?? []).includes('timestamp-query');
+    engine.timestampsSupported =
+      params.prof && (hooks.diag?.features ?? []).includes('timestamp-query');
     if (engine.timestampsSupported) engine.profiler = new GpuProfiler(renderer);
     // depth-prepass correctness (see VegPrepass): position math must land
     // on identical depths across the depth-only and shaded pipelines

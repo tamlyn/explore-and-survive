@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5174 --strictPort",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "shoot": "tsx tools/shoot.ts",
     "compare": "tsx tools/compare.ts",
     "battery": "tsx tools/battery.ts"
@@ -24,6 +25,7 @@
     "sharp": "^0.34.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^3.2.7"
   }
 }

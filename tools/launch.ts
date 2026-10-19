@@ -105,6 +105,8 @@ export function laasUrl(opts: LaasPageOptions, base = 'http://localhost:5173/'):
   if (opts.preset) q.set('preset', opts.preset);
   q.set('hud', opts.hud ? '1' : '0');
   if (opts.freeze !== false) q.set('freeze', '1');
+  // tooling reads per-pass GPU timings; pass extra.prof='0' for wall time only
+  q.set('prof', '1');
   for (const [k, v] of Object.entries(opts.extra ?? {})) q.set(k, v);
   return `${base}?${q.toString()}`;
 }
