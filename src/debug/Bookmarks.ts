@@ -132,6 +132,8 @@ export function installBookmarks(
     const b = BOOKMARKS[params.shot - 1];
     if (b) {
       hooks.initialPose = { p: [b.x, poseY(hf, b), b.z], yaw: b.yaw, pitch: b.pitch };
+      // bookmarks are composed camera framings, not walk spawns
+      hooks.initialPoseMode = 'fly';
     }
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Walk benchmark — boots the world at a bookmark (default: shot 7, forest
- * interior, the heaviest everyday view), holds W in walk mode and reports the
+ * interior, the heaviest everyday view), switches to walk mode, holds W and reports the
  * presented frame rate (rAF ticks) plus frame-time percentiles and the
  * vegetation counters. Needs the dev server on :5173.
  *
@@ -13,7 +13,7 @@
  */
 
 import type { EngineStats, GpuDiagnostics } from '../src/core/Hooks';
-import { launchWebGPU } from './launch';
+import { laasUrl, launchWebGPU } from './launch';
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -30,7 +30,8 @@ const png = arg('png', '');
 const { browser } = await launchWebGPU();
 const page = await browser.newPage({ viewport: { width: 1512, height: 945 }, deviceScaleFactor: dsf });
 page.on('pageerror', (e) => console.error('[pageerror]', e.message));
-await page.goto(`http://localhost:5173/?scene=world&shot=${shot}&hud=0&${query}`, {
+const extra = { shot, ...Object.fromEntries(new URLSearchParams(query)) };
+await page.goto(laasUrl({ scene: 'world', hud: false, freeze: false, extra }), {
   waitUntil: 'domcontentloaded',
 });
 await page.waitForFunction(() => window.__laas && (window.__laas.ready || window.__laas.error !== null), undefined, {
@@ -46,6 +47,7 @@ if (bootError) {
 // let TRAA/exposure settle and the first culls stream in
 await page.waitForTimeout(5000);
 
+await page.keyboard.press('KeyV'); // bookmarks boot in fly mode
 await page.keyboard.down('KeyW');
 await page.waitForTimeout(2000);
 // a string, not a closure: tsx's keepNames wraps named functions in a
@@ -60,17 +62,24 @@ const sample = (await page.evaluate(`(async () => {
     last = now;
     if (running) requestAnimationFrame(tick);
   });
+  const t0 = performance.now();
   await new Promise((r) => setTimeout(r, ${walkSec * 1000}));
   running = false;
+  const spanSec = (performance.now() - t0) / 1000;
   const L = window.__laas;
-  return { frameMs, stats: L.stats, diag: L.diag };
-})()`)) as { frameMs: number[]; stats: EngineStats | null; diag: GpuDiagnostics | null };
+  return { frameMs, spanSec, stats: L.stats, diag: L.diag };
+})()`)) as {
+  frameMs: number[];
+  spanSec: number;
+  stats: EngineStats | null;
+  diag: GpuDiagnostics | null;
+};
 
 const sorted = sample.frameMs.slice(1).sort((a, b) => a - b);
 const pct = (q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? 0;
 const c = sample.stats?.counters ?? {};
 const result = {
-  fps: +(sorted.length / walkSec).toFixed(1),
+  fps: +(sorted.length / sample.spanSec).toFixed(1),
   p50: +pct(0.5).toFixed(1),
   p95: +pct(0.95).toFixed(1),
   draws: sample.stats?.drawCalls ?? 0,
