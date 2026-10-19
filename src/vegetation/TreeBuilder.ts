@@ -24,15 +24,6 @@ export interface BuiltTree {
   stats: { tris: number; anchors: number; branches: number; height: number };
 }
 
-export interface HeroDiet {
-  /** card-spray budget (anchors strided to this, survivors enlarged) */
-  cardTarget?: number;
-  /** real-leaf anchor budget (stride over anchors, full leaf density each) */
-  meshAnchorTarget?: number;
-  /** tube radial-segment multiplier (1 = gallery hero) */
-  barkK?: number;
-}
-
 export function buildTree(
   sp: SpeciesParams,
   rng: Rng,
@@ -41,8 +32,6 @@ export function buildTree(
     inst?: Partial<GrowthInstance>;
     /** 'cards' (default) | 'mesh' (real leaves only) | 'hybrid' (hero: both) */
     foliageMode?: 'cards' | 'mesh' | 'hybrid';
-    /** budgets the lod-0 hero down from gallery scale (~1.2M) to a ring cost */
-    hero?: HeroDiet;
   },
 ): BuiltTree {
   const lod = opts?.lod ?? 0;
@@ -54,7 +43,7 @@ export function buildTree(
   // beech carried 98k card + 13k twig tris before this diet).
   const anchorLevel = sp.foliage?.anchorLevel ?? 2;
   const barkG = new MeshGrower();
-  const lodK = lod === 0 ? (opts?.hero?.barkK ?? 1) : lod === 1 ? 0.6 : 0.32;
+  const lodK = lod === 0 ? 1 : lod === 1 ? 0.6 : 0.32;
   const maxLevel =
     lod === 0 ? 99 : lod === 1 ? Math.max(1, anchorLevel - 1) : Math.max(1, anchorLevel - 2);
   tubesForSkeleton(barkG, skel, rng.fork('tubes'), {
@@ -83,8 +72,7 @@ export function buildTree(
       // R1 keeps more, smaller cards (enlargement cap 1.9): the old 1100 ×
       // 3.1-size cards were meter-scale sheets that read as dark slabs at
       // grazing angles 30–100 m out (beech: 24k anchors → stride 23)
-      const target =
-        lod === 0 ? opts?.hero?.cardTarget ?? Infinity : lod === 1 ? 2600 : 300;
+      const target = lod === 0 ? Infinity : lod === 1 ? 2600 : 300;
       const stride = Math.max(1, Math.ceil(skel.anchors.length / target));
       const anchors =
         stride > 1 ? skel.anchors.filter((_, i) => i % stride === 0) : skel.anchors;
@@ -111,11 +99,7 @@ export function buildTree(
         fol.kind === 'needleSpray'
           ? { ...fol.leaf, needleCount: Math.round(fol.leaf.needleCount * 3), len: fol.leaf.len * 1.15 }
           : fol.leaf;
-      const meshTarget = opts?.hero?.meshAnchorTarget ?? Infinity;
-      const mStride = Math.max(1, Math.ceil(skel.anchors.length / meshTarget));
-      const meshAnchors =
-        mStride > 1 ? skel.anchors.filter((_, i) => i % mStride === 0) : skel.anchors;
-      for (const anchor of meshAnchors) {
+      for (const anchor of skel.anchors) {
         if (fol.kind === 'needleSpray') buildSprayAt(folG, anchor, heroLeaf, folRng);
         else buildLeafCluster(folG, anchor, fol.leaf, fol.clusterSize, folRng);
       }

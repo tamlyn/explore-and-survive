@@ -1,5 +1,11 @@
 # PROJECT LAAS — STATUS (source of truth)
 
+> **Game fork note (2026-10):** this repo is being turned into an exploration survival
+> shooter, where frame rate on laptop GPUs outranks the demo's visual floors. Relaxed on
+> purpose: no hero tree ring (trees use full cards to 60 m, branch cards to 200 m, then
+> impostors), about half the tree density (scatter cell 4.8 m), and grass on a 2048² grid at
+> ~44 slots/m² (below the 800k-blade floor). The log below is the original demo's history.
+
 > **Rehydration protocol** (for an agent resuming with no context): read this file fully, then
 > `PROJECT_LAAS_v2.md` (the spec — binding), then `docs/THREE-NOTES.md` (API gotchas for the
 > pinned three.js), then the **Current focus** section below. Reference images: `reference/`.

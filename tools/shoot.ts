@@ -78,6 +78,8 @@ async function main(): Promise<void> {
   for (const [k, v] of Object.entries(args)) {
     if (!consumed.has(k)) extra[k] = v === true ? '1' : String(v);
   }
+  // --gpusample reads per-pass timings, which only exist with profiling on
+  if (Number(str(args['gpusample']) ?? 0) > 0) extra['prof'] = '1';
   if (Object.keys(extra).length > 0) urlOpts.extra = extra;
   const url = laasUrl(urlOpts);
   console.log(`[shoot] ${url} → ${out}`);
