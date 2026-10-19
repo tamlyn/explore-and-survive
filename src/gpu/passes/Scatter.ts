@@ -98,7 +98,7 @@ export interface ScatterResult {
 }
 
 // child-grid cell sizes (m) — jitter spans the full cell, so no grid reads
-const TREE_CELL = 3.4;
+const TREE_CELL = 4.8;
 const UNDER_CELL = 2.4;
 const EXTRA_CELL = 5.5;
 const STONE_CELL = 2.1;

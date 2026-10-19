@@ -21,7 +21,6 @@ import {
   deadwoodMaterial,
   flowerMaterial,
   foliageCardMaterial,
-  foliageMaterial,
   rockMaterial,
 } from '../render/VegMaterials';
 import { buildLog, buildStump, type DecayState } from './Deadfall';
@@ -30,7 +29,7 @@ import { twigGeometry } from './GroundCover';
 import { captureImpostor, type ImpostorAtlas, type ImpostorPart } from './Impostors';
 import { buildRock } from './RockBuilder';
 import { TREE_SPECIES } from './Species';
-import { buildTree, type HeroDiet } from './TreeBuilder';
+import { buildTree } from './TreeBuilder';
 import {
   buildFern,
   buildFlower,
@@ -51,8 +50,6 @@ export interface PoolPart {
 export interface VegPool {
   cls: number;
   variant: number;
-  /** hero ring (trees only): full bark + cards + real mesh leaves, ≤26 m */
-  r0?: PoolPart[] | null;
   r1: PoolPart[] | null;
   r2: PoolPart[] | null;
   trisR1: number;
@@ -61,24 +58,6 @@ export interface VegPool {
   height: number;
   radius: number;
 }
-
-/**
- * Hero-ring tri budgets per species (spec floor: hero tree ≥100k tris for the
- * canopy species — karst gnarl and snags are small/leafless by nature).
- * Measured by tools/herotris.ts; mesh leaves carry the detail, bark radial
- * segs dieted where twig tube counts explode (beech: 24k anchors).
- */
-export const HERO_DIETS: Record<string, HeroDiet> = {
-  // cards stay UNTHINNED at hero range: thinning enlarges the survivors
-  // (sqrt-coverage rule) and a 1.65×-size card 4 m away is a giant flat
-  // sheet — full-count original-size cards + mesh leaves is the gallery look
-  spruce: { meshAnchorTarget: 850, barkK: 0.8 },
-  pine: { meshAnchorTarget: 350, barkK: 0.8 },
-  beech: { meshAnchorTarget: 2200, barkK: 0.5 },
-  birch: { meshAnchorTarget: 4000, barkK: 1 },
-  karst: { meshAnchorTarget: 4000, barkK: 1.1 },
-  snag: { barkK: 1.3 },
-};
 
 export interface VegLib {
   pools: VegPool[];
@@ -184,28 +163,8 @@ export async function buildVegLibrary(
     for (let v = 0; v < TREE_VARIANTS; v++) {
       const label = `veg/${sp.id}/${v}`;
       const inst = variantInstance(seed, sp.id, v);
-      // hero ring: full tube hierarchy + thinned cards + REAL mesh leaves.
-      // Cards stay in the hero so the R0↔R1 swap only adds leaf geometry —
-      // the painted silhouette never changes (no pop).
-      const t0 = buildTree(sp, seed.rng(label), {
-        lod: 0,
-        inst,
-        foliageMode: 'hybrid',
-        hero: HERO_DIETS[sp.id] ?? { cardTarget: 1500, meshAnchorTarget: 1200 },
-      });
       const t1 = buildTree(sp, seed.rng(label), { lod: 1, inst });
       const t2 = buildTree(sp, seed.rng(label), { lod: 2, inst });
-      const r0 = treeParts(sp, t0);
-      if (t0.foliageMesh) {
-        r0.push({
-          geo: t0.foliageMesh,
-          tris: t0.foliageMesh.index ? t0.foliageMesh.index.count / 3 : 0,
-          make: () => foliageMaterial({ color: sp.foliageColor }),
-          // cards already cast equivalent crown coverage — mesh-leaf shadow
-          // casting would double the caster load for no visible gain
-          castShadow: false,
-        });
-      }
       const r1 = treeParts(sp, t1);
       const r2 = treeParts(sp, t2);
       const b = bounds(r1.map((p) => p.geo));
@@ -213,7 +172,6 @@ export async function buildVegLibrary(
       pools.push({
         cls: ci,
         variant: v,
-        r0,
         r1,
         r2,
         trisR1: t1.stats.tris,

@@ -26,8 +26,7 @@
  * the visible slope).
  *
  * LOD rings (dithered crossfades in the materials):
- *   trees:  R0 hero ≤26 m (full bark + cards + real mesh leaves, ≥100k tris)
- *           → R1 full cards ≤150 m → R2 branch-cards ≤460 m → octahedral
+ *   trees:  R1 full cards ≤R1_FAR → R2 branch-cards ≤R2_FAR → octahedral
  *           impostors beyond (4-tile view blend, relit — D-4 runtime)
  *   understory: single ring with per-class max distance
  *   extras: boulders/slabs swap to low-detail rock at 120 m, live to 700 m
@@ -88,21 +87,15 @@ import { depthPrepassTwin } from '../render/VegPrepass';
 import type { NF, NI, NU, NV3, NV4 } from '../gpu/TSLTypes';
 import type { VegLib } from './VegLibrary';
 
-// ring distances (m) + dither bands (user feedback: transitions read too
-// close — full-card trees hold to 150 m, impostors start at 460 m).
-// Hero ring 0 (≤26 m): full bark + cards + REAL mesh leaves — the nanite-
-// equivalence near field (spec floor: hero tree ≥100k tris).
-const R0_FAR = 26;
-const BAND0 = 5;
-const R1_FAR = 150;
+// ring distances (m) + dither bands
+const R1_FAR = 60;
 const BAND1 = 14;
-const R2_FAR = 460;
+const R2_FAR = 200;
 const BAND2 = 36;
 const EX_R1_FAR = 120;
 const EX_BAND = 15;
 
 // per-group compact-region capacities
-const CAP_HERO = 48;
 const CAP_TREE_R1 = 6144;
 const CAP_TREE_R2 = 8192;
 const CAP_IMPOSTOR = 49152;
@@ -110,23 +103,22 @@ const CAP_UNDER = 4096;
 const CAP_EX_R1 = 1024;
 const CAP_EX_R2 = 2048;
 
-const MAIN_GROUPS = 170;
+const MAIN_GROUPS = 146;
 /**
- * Per-cascade caster groups: trees r1/r2 (48) + hero r0 (24) + extras/stones
- * (64) + impostor-band crown proxies per species (6). The impostor band
+ * Per-cascade caster groups: trees r1/r2 (48) + extras/stones (64) +
+ * impostor-band crown proxies per species (6). The impostor band
  * casts so tree shadows don't end in a hard circle at the R2 boundary —
  * they fade out by IMP_CAST_FAR instead.
  */
-const CASC_LOCALS = 142;
+const CASC_LOCALS = 118;
 const CASCADES = 4;
 const GROUPS = MAIN_GROUPS + CASCADES * CASC_LOCALS;
 /** crown-proxy shadows fade out across this band (m from camera) */
 const IMP_CAST_FADE0 = 620;
 const IMP_CAST_FAR = 1100;
 
-function groupOf(cls: number, variant: number, ring: 0 | 1 | 2 | 3): number {
+function groupOf(cls: number, variant: number, ring: 1 | 2 | 3): number {
   if (cls < 6) {
-    if (ring === 0) return 146 + cls * 4 + variant;
     if (ring === 3) return 48 + cls;
     return (cls * 4 + variant) * 2 + (ring - 1);
   }
@@ -138,24 +130,23 @@ function groupOf(cls: number, variant: number, ring: 0 | 1 | 2 | 3): number {
 /**
  * Caster-group index for cascade c. Local layout:
  *   0..47   tree pools × rings r1/r2  (pool*2 + ring-1)
- *   48..71  hero r0 per pool
- *   72..135 extras/stones pe × rings  (72 + pe*2 + ring-1)
+ *   48..111 extras/stones pe × rings  (48 + pe*2 + ring-1)
+ *   112..117 impostor-band crown proxies per cls
  */
 function casterGroupOf(
   c: number,
   cls: number,
   variant: number,
-  ring: 0 | 1 | 2 | 3,
+  ring: 1 | 2 | 3,
 ): number {
   const base = MAIN_GROUPS + c * CASC_LOCALS;
   if (cls < 6) {
-    if (ring === 3) return base + 136 + cls;
+    if (ring === 3) return base + 112 + cls;
     const pool = cls * 4 + variant;
-    if (ring === 0) return base + 48 + pool;
     return base + pool * 2 + (ring - 1);
   }
   const pe = (cls - 16) * 4 + variant;
-  return base + 72 + pe * 2 + (ring - 1);
+  return base + 48 + pe * 2 + (ring - 1);
 }
 
 function capOf(g: number): number {
@@ -163,12 +154,11 @@ function capOf(g: number): number {
     // caster regions: a cascade box covers a slice of the frustum, so the
     // worst case is well under the main-view caps
     const local = (g - MAIN_GROUPS) % CASC_LOCALS;
-    if (local >= 136) return 8192; // impostor-band crown proxies (per cls)
+    if (local >= 112) return 8192; // impostor-band crown proxies (per cls)
     if (local < 48) return local % 2 === 0 ? 3072 : 6144; // tree r1/r2
-    if (local < 72) return CAP_HERO;
-    const pe = (local - 72) >> 1;
+    const pe = (local - 48) >> 1;
     const cls = 16 + (pe >> 2);
-    const isR1 = (local - 72) % 2 === 0;
+    const isR1 = (local - 48) % 2 === 0;
     if (cls < 20) return isR1 ? 512 : 1024; // extras
     if (cls === 20) return isR1 ? 2048 : 12288; // StoneL → 900 m
     if (cls === 21) return isR1 ? 4096 : 8192; // StoneM
@@ -178,7 +168,6 @@ function capOf(g: number): number {
   if (g < 48) return g % 2 === 0 ? CAP_TREE_R1 : CAP_TREE_R2;
   if (g < 54) return CAP_IMPOSTOR;
   if (g < 82) return CAP_UNDER;
-  if (g >= 146) return CAP_HERO;
   if (g < 114) return (g - 82) % 2 === 0 ? CAP_EX_R1 : CAP_EX_R2;
   // size-stratified stones/branches (cls 20–23)
   const cls = 16 + ((g - 82) >> 3);
@@ -306,7 +295,7 @@ export class Forests {
       ) as typeof irr;
     }
     // vertex-stage probe GI (Phase 7 perf): the probe grid is 16 m and the
-    // canopy residual 4 m — across ≤2 m cards or cm-tessellated hero meshes
+    // canopy residual 4 m — across ≤2 m cards
     // vertex eval + interpolation is identical, and drops 4 texture taps
     // from every overdrawn foliage fragment
     const irrV = varying(irr as unknown as Parameters<typeof varying>[0]);
@@ -460,11 +449,9 @@ export class Forests {
       return pmat;
     };
 
-    const fadeFor = (cls: number, ring: 0 | 1 | 2 | 3): RingFade => {
+    const fadeFor = (cls: number, ring: 1 | 2 | 3): RingFade => {
       if (cls < 6) {
-        if (ring === 0) return { fadeOutAt: R0_FAR, band: BAND0 };
-        if (ring === 1)
-          return { fadeInAt: R0_FAR, inBand: BAND0, fadeOutAt: R1_FAR, band: BAND1 };
+        if (ring === 1) return { fadeOutAt: R1_FAR, band: BAND1 };
         // bands MUST match across each boundary (in-band here = out-band of
         // the nearer ring) or the complementary dither doesn't partition
         // pixels and holes reappear — hence inBand: ring2's out edge pairs
@@ -485,11 +472,10 @@ export class Forests {
 
     for (const pool of lib.pools) {
       const layer = layerOf(pool.cls);
-      const rings: { ring: 0 | 1 | 2; parts: typeof pool.r1 }[] = [];
-      if (pool.r0) rings.push({ ring: 0, parts: pool.r0 });
+      const rings: { ring: 1 | 2; parts: typeof pool.r1 }[] = [];
       if (pool.r1) rings.push({ ring: 1, parts: pool.r1 });
       if (pool.r2) rings.push({ ring: 2, parts: pool.r2 });
-      // shadow budget: tree rings 0–2 cast (per-cascade caster lists);
+      // shadow budget: tree rings 1–2 cast (per-cascade caster lists);
       // understory is grounded by contact shadows + AO instead.
       // ?ablate=casters drops ALL veg caster draws (perf attribution).
       const ablateCasters = (
@@ -780,15 +766,9 @@ export class Forests {
         if (kind === 'trees') {
           const pool = cls.mul(4).add(variant).toInt();
           If(visMain.greaterThan(0.5), () => {
-            If(dist.lessThan(R0_FAR + BAND0), () => {
-              appendTo(pool.add(146) as unknown as NI, i as unknown as NU);
+            If(dist.lessThan(R1_FAR + BAND1), () => {
+              appendTo(pool.mul(2) as unknown as NI, i as unknown as NU);
             });
-            If(
-              dist.greaterThanEqual(R0_FAR - BAND0).and(dist.lessThan(R1_FAR + BAND1)),
-              () => {
-                appendTo(pool.mul(2) as unknown as NI, i as unknown as NU);
-              },
-            );
             If(
               dist.greaterThanEqual(R1_FAR - BAND1).and(dist.lessThan(R2_FAR + BAND2)),
               () => {
@@ -804,18 +784,9 @@ export class Forests {
           for (let c = 0; c < CASCADES; c++) {
             const base = MAIN_GROUPS + c * CASC_LOCALS;
             If(inCascade(c, center, rad).greaterThan(0.5), () => {
-              If(dist.lessThan(R0_FAR + BAND0), () => {
-                appendTo(
-                  pool.add(base + 48) as unknown as NI,
-                  i as unknown as NU,
-                );
+              If(dist.lessThan(R1_FAR + BAND1), () => {
+                appendTo(pool.mul(2).add(base) as unknown as NI, i as unknown as NU);
               });
-              If(
-                dist.greaterThanEqual(R0_FAR - BAND0).and(dist.lessThan(R1_FAR + BAND1)),
-                () => {
-                  appendTo(pool.mul(2).add(base) as unknown as NI, i as unknown as NU);
-                },
-              );
               If(
                 dist.greaterThanEqual(R1_FAR - BAND1).and(dist.lessThan(R2_FAR + BAND2)),
                 () => {
@@ -831,7 +802,7 @@ export class Forests {
                 dist.greaterThanEqual(R2_FAR - BAND2).and(dist.lessThan(IMP_CAST_FAR)),
                 () => {
                   appendTo(
-                    cls.add(base + 136).toInt() as unknown as NI,
+                    cls.add(base + 112).toInt() as unknown as NI,
                     i as unknown as NU,
                   );
                 },
@@ -854,7 +825,7 @@ export class Forests {
             });
           });
           for (let c = 0; c < CASCADES; c++) {
-            const base = MAIN_GROUPS + c * CASC_LOCALS + 72;
+            const base = MAIN_GROUPS + c * CASC_LOCALS + 48;
             If(inCascade(c, center, rad).greaterThan(0.5), () => {
               If(hasR2, () => {
                 If(dist.lessThan(EX_R1_FAR + EX_BAND), () => {
@@ -978,7 +949,6 @@ export class Forests {
         attr as Parameters<Renderer['getArrayBufferAsync']>[0],
       );
       const counts = new Uint32Array(ab);
-      let hero = 0;
       let r1 = 0;
       let r2 = 0;
       let imp = 0;
@@ -996,11 +966,9 @@ export class Forests {
           else r2 += n;
         } else if (g < 54) imp += n;
         else if (g < 82) under += n;
-        else if (g < 146) extras += n;
-        else hero += n;
+        else extras += n;
       }
       this.hud = {
-        'veg.hero': hero,
         'veg.r1': r1,
         'veg.r2': r2,
         'veg.imp': imp,

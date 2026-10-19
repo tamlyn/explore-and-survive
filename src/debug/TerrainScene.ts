@@ -175,7 +175,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       Object.assign(engine.stats.counters, forests.counterSnapshot());
     });
 
-    // near-field carpets: 800k-blade grass ring + 80k debris ring
+    // near-field carpets: grass ring + debris ring
     if (!ablate.has('grass')) {
       const ring = new GroundRing(hf, canopyTex, seed, ablate.has('gi') ? null : gi);
       ring.init(lib.atlases.get('beech') ?? null);

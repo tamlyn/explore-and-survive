@@ -1,6 +1,6 @@
 /**
- * GroundRing — camera-following near-field carpets: GRASS (≥800k blades,
- * spec floor) and DEBRIS (≥80k: cobbles/pebbles/twigs/bark chips/litter).
+ * GroundRing — camera-following near-field carpets: GRASS and DEBRIS
+ * (cobbles/pebbles/twigs/bark chips/litter).
  *
  * Streaming without uploads: each instance slot maps to the unique world
  * cell congruent to it (mod GRID) nearest the camera — the classic clipmap
@@ -87,9 +87,9 @@ import { buildRock } from './RockBuilder';
 import type { WorldSeed } from '../core/Seed';
 import { runiform } from '../gpu/RenderUniform';
 
-const GRASS_GRID = 3072;
-const GRASS_CELL = 0.105; // m → ±161 m ring, ~90 slots/m²
-const GRASS_R = 155;
+const GRASS_GRID = 2048;
+const GRASS_CELL = 0.15; // m → ±154 m ring, ~44 slots/m²
+const GRASS_R = 150;
 const G_NEAR = 30;
 const G_MID = 70;
 /** crossfade half-width — cull overlap and material fade MUST share it */
@@ -98,7 +98,7 @@ const GRASS_CAPS = [524288, 1048576, 1835008]; // near/mid/far compact regions
 
 /**
  * Continuous distance thinning, conserved by blade widening (1/√thin in the
- * vertex stage). thin(0..~40 m) = 1; ~0.45 at 100 m; ~0.16 at 155 m.
+ * vertex stage). thin(0..~40 m) = 1; ~0.45 at 100 m; ~0.16 at 150 m.
  * Beyond ~120 m an extra collapse folds coverage into ever-wider
  * super-tufts so the band reaches GRASS_R without a vertex explosion
  * (feedback 2.8: grass should render much farther, cheaply).
@@ -116,7 +116,7 @@ const DEB_R = 74;
 const DEB_CAPS = [24576, 49152, 49152, 32768, 65536];
 
 // far super-tuft layer (g3, feedback 2.8): its own COARSE toroidal grid —
-// the fine grid physically ends at ±161 m. Wide merged tufts carry the
+// the fine grid physically ends at ±154 m. Wide merged tufts carry the
 // meadow silhouette 150→265 m; beyond that the terrain splat owns it.
 const FAR_GRID = 768;
 const FAR_CELL = 0.7; // ±269 m ring, ~2 slots/m²
