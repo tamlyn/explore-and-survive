@@ -167,6 +167,21 @@ describe('PlayerMotor', () => {
     expect(motor.feet.y).toBeLessThan(1);
   });
 
+  it('finds a spawn spot clear of a trunk', () => {
+    const { motor } = setup();
+    addFixed(rapier.ColliderDesc.cylinder(4, 0.4), 0, 4, 0);
+    const spot = motor.clearSpotNear(0, 0, () => 0);
+    expect(Math.hypot(spot.x, spot.z)).toBeGreaterThan(0.4 + CAPSULE_RADIUS);
+    expect(Math.hypot(spot.x, spot.z)).toBeLessThan(1.6);
+  });
+
+  it('spawns exactly where asked on open ground, on the wade floor in water', () => {
+    const { motor } = setup(() => 0, () => 2);
+    const spot = motor.clearSpotNear(3, -4, () => 0);
+    expect([spot.x, spot.z]).toEqual([3, -4]);
+    expect(spot.y + EYE_HEIGHT).toBeGreaterThanOrEqual(2 + WADE_CLEAR);
+  });
+
   it('keeps the eye above deep water', () => {
     const waterY = 2;
     const { motor } = setup(() => 0, () => waterY);

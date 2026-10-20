@@ -110,6 +110,14 @@ export class ObstacleField {
     return out;
   }
 
+  /** squared horizontal distance from (x, z) to obstacle `id`'s base */
+  distanceSq(id: number, x: number, z: number): number {
+    const { src, i } = this.entries[id] as Entry;
+    const dx = (src.A[i * 4] as number) - x;
+    const dz = (src.A[i * 4 + 2] as number) - z;
+    return dx * dx + dz * dz;
+  }
+
   /** world-space collider description for obstacle `id` */
   colliderDesc(rapier: Rapier, id: number): RAPIER.ColliderDesc | null {
     const { src, i, template } = this.entries[id] as Entry;
@@ -171,8 +179,9 @@ export class ObstacleStreamer {
         this.live.delete(id);
       }
     }
-    for (const id of this.field.near(x, z, this.radius)) {
-      if (this.live.has(id)) continue;
+    const r2 = this.radius * this.radius;
+    for (const id of keep) {
+      if (this.live.has(id) || this.field.distanceSq(id, x, z) > r2) continue;
       const desc = this.field.colliderDesc(this.rapier, id);
       if (desc) this.live.set(id, this.world.createCollider(desc));
     }

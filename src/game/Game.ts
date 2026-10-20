@@ -11,13 +11,14 @@
 import type { PerspectiveCamera } from 'three';
 import { FlyCamera } from '../core/FlyCamera';
 import type { CamPose } from '../core/Hooks';
+import { formatCamString } from '../core/Params';
 import { Input } from '../core/Input';
 import { sampleGrid } from '../world/GridSample';
 import { FirstPersonRig } from './FirstPersonRig';
 import { ObstacleStreamer, type ObstacleField } from './Obstacles';
 import { loadRapier, Physics, type TerrainGrid } from './Physics';
 import { Player } from './Player';
-import { EYE_HEIGHT, PlayerMotor, WADE_CLEAR } from './PlayerMotor';
+import { PlayerMotor } from './PlayerMotor';
 
 /** what a world scene hands the game layer */
 export interface GameWorld {
@@ -32,6 +33,7 @@ export type ControlMode = 'play' | 'fly';
 interface Attached {
   world: GameWorld;
   physics: Physics;
+  motor: PlayerMotor;
   player: Player;
   rig: FirstPersonRig;
   obstacles: ObstacleStreamer | null;
@@ -60,19 +62,26 @@ export class Game {
     const obstacles = world.obstacles
       ? new ObstacleStreamer(rapier, physics.world, world.obstacles)
       : null;
-    this.attached = { world, physics, player, rig: new FirstPersonRig(this.camera), obstacles };
+    this.attached = {
+      world,
+      physics,
+      motor,
+      player,
+      rig: new FirstPersonRig(this.camera),
+      obstacles,
+    };
   }
 
   update(dt: number): void {
     const input = this.input;
+    if (input.takePress('KeyP')) {
+      // eslint-disable-next-line no-console
+      console.log(`[pose] cam=${formatCamString(this.getPose())}`);
+    }
     // tooling (flythrough) owns the camera while input is disabled
     if (!input.enabled) {
       input.endFrame();
       return;
-    }
-    if (input.takePress('KeyP')) {
-      // eslint-disable-next-line no-console
-      console.log(`[pose] cam=${camString(this.getPose())}`);
     }
     if (input.takePress('KeyV')) {
       if (this.modeV === 'play') this.setPose(this.getPose());
@@ -99,12 +108,15 @@ export class Game {
       return;
     }
     const { x, z } = this.camera.position;
-    const { heights, res, worldSize } = a.world.terrain;
-    const ground = sampleGrid(heights, res, worldSize, x, z);
-    const feetY = Math.max(ground, a.world.waterAt(x, z) + WADE_CLEAR - EYE_HEIGHT);
     a.obstacles?.update(x, z);
     a.physics.step(); // new colliders reach queries only after a step
-    a.player.spawn(x, feetY + 0.02, z, this.fly.yaw, this.fly.pitch);
+    const { heights, res, worldSize } = a.world.terrain;
+    const spot = a.motor.clearSpotNear(
+      x,
+      z,
+      (px, pz) => a.physics.terrainY(px, pz) ?? sampleGrid(heights, res, worldSize, px, pz),
+    );
+    a.player.spawn(spot.x, spot.y, spot.z, this.fly.yaw, this.fly.pitch);
     a.rig.baseFov = this.fly.baseFov;
     a.rig.reset();
     a.rig.update(0, a.player);
@@ -131,9 +143,4 @@ export class Game {
     }
     return this.fly.getPose();
   }
-}
-
-function camString(p: CamPose): string {
-  const f = (v: number): string => v.toFixed(2);
-  return `${f(p.p[0])},${f(p.p[1])},${f(p.p[2])},${p.yaw.toFixed(4)},${p.pitch.toFixed(4)},${(p.fov ?? 0).toFixed(0)}`;
 }

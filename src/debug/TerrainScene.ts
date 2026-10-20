@@ -264,8 +264,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     }
   });
 
-  // terrain/water probe for the camera rig: walk-mode ground physics + the
-  // fly-mode soft collision / underwater guard both live in FlyCamera now
+  // terrain/water probe: the free-fly camera's clearance and tooling
   ctx.hooks.groundProbe = (x, z) => ({
     ground: hf.heightAtCpu(x, z),
     water: hf.waterYAtCpu(x, z),

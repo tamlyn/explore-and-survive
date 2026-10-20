@@ -14,7 +14,7 @@ type Rapier = typeof RAPIER;
 export const CAPSULE_RADIUS = 0.3;
 export const CAPSULE_HALF_HEIGHT = 0.6;
 /** feet → capsule centre */
-const CENTRE_Y = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
+const CENTER_Y = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
 export const EYE_HEIGHT = 1.7;
 export const GRAVITY = 22; // m/s² — game-feel gravity, not 9.81
 export const JUMP_V0 = 7.0; // → ~1.1 m apex
@@ -60,6 +60,45 @@ export class PlayerMotor {
     this.kcc.setMinSlopeSlideAngle(MAX_CLIMB);
   }
 
+  /**
+   * Nearest place around (x, z) where the capsule stands without touching
+   * any obstacle (trunk, rock…), searched in rings out to `maxR`; falls back
+   * to (x, z) itself. Feet sit on `groundAt` or the wade floor, whichever is
+   * higher.
+   */
+  clearSpotNear(x: number, z: number, groundAt: (x: number, z: number) => number, maxR = 6): Vec3 {
+    const feetAt = (px: number, pz: number): Vec3 => {
+      const wade = this.waterAt ? this.waterAt(px, pz) + WADE_CLEAR - EYE_HEIGHT : -Infinity;
+      return { x: px, y: Math.max(groundAt(px, pz), wade) + 0.05, z: pz };
+    };
+    for (let r = 0; r <= maxR; r += 0.5) {
+      const n = r === 0 ? 1 : Math.ceil((2 * Math.PI * r) / 0.5);
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const spot = feetAt(x + Math.cos(a) * r, z + Math.sin(a) * r);
+        if (this.fits(spot)) return spot;
+      }
+    }
+    return feetAt(x, z);
+  }
+
+  private fits(feet: Vec3): boolean {
+    let blocked = false;
+    this.world.intersectionsWithShape(
+      { x: feet.x, y: feet.y + CENTER_Y, z: feet.z },
+      { x: 0, y: 0, z: 0, w: 1 },
+      this.collider.shape,
+      () => {
+        blocked = true;
+        return false;
+      },
+      undefined,
+      undefined,
+      this.collider,
+    );
+    return !blocked;
+  }
+
   /** place the feet at a point, at rest */
   teleport(x: number, y: number, z: number): void {
     this.feet.x = x;
@@ -67,7 +106,7 @@ export class PlayerMotor {
     this.feet.z = z;
     this.velY = 0;
     this.grounded = false;
-    this.body.setTranslation({ x, y: y + CENTRE_Y, z }, true);
+    this.body.setTranslation({ x, y: y + CENTER_Y, z }, true);
     this.world.propagateModifiedBodyPositionsToColliders();
   }
 
@@ -111,7 +150,7 @@ export class PlayerMotor {
 
     this.body.setNextKinematicTranslation({
       x: this.feet.x,
-      y: this.feet.y + CENTRE_Y,
+      y: this.feet.y + CENTER_Y,
       z: this.feet.z,
     });
   }

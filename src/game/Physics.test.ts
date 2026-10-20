@@ -29,14 +29,23 @@ describe('terrain heightfield collider', () => {
       [-29, -29],
     ] as const) {
       const expected = sampleGrid(grid.heights, grid.res, grid.worldSize, x, z);
-      expect(physics.groundY(x, z)).toBeCloseTo(expected, 3);
+      expect(physics.terrainY(x, z)).toBeCloseTo(expected, 3);
     }
+    physics.dispose();
+  });
+
+  it('reports the terrain surface even under an obstacle', () => {
+    const grid = rampGrid(16, 64);
+    const physics = new Physics(rapier, grid);
+    physics.world.createCollider(rapier.ColliderDesc.cuboid(2, 20, 2).setTranslation(5, 20, 5));
+    physics.step();
+    expect(physics.terrainY(5, 5)).toBeCloseTo(sampleGrid(grid.heights, grid.res, grid.worldSize, 5, 5), 3);
     physics.dispose();
   });
 
   it('has no ground outside the world', () => {
     const physics = new Physics(rapier, rampGrid(8, 32));
-    expect(physics.groundY(100, 0)).toBeNull();
+    expect(physics.terrainY(100, 0)).toBeNull();
     physics.dispose();
   });
 });

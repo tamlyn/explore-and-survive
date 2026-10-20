@@ -7,6 +7,7 @@
 
 import type { PerspectiveCamera } from 'three';
 import { Vector3 } from 'three';
+import { aimCamera } from '../core/CameraAim';
 import { WALK_SPEED, SPRINT_MULT } from './Player';
 import type { Vec3 } from './PlayerMotor';
 
@@ -85,10 +86,7 @@ export class FirstPersonRig {
     }
 
     const cam = this.camera;
-    cam.rotation.set(0, 0, 0);
-    cam.rotateY(p.yaw);
-    cam.rotateX(p.pitch);
-    if (roll !== 0) cam.rotateZ(roll);
+    aimCamera(cam, p.yaw, p.pitch, roll);
     RIGHT.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
     cam.position.set(p.eye.x, p.eye.y + bobY + this.dipY, p.eye.z).addScaledVector(RIGHT, bobX);
     // matrices fresh for every subsystem updateFn that runs after this one

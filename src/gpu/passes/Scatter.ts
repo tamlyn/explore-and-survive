@@ -355,20 +355,22 @@ export async function buildCanopyMap(
   return tex;
 }
 
-/** sample the canopy coverage field at a world xz (filtered) */
 /** one-off CPU copy of a layer's accepted instances (A, B as flat vec4 arrays) */
 export async function readScatterLayer(
   renderer: Renderer,
   layer: ScatterLayer,
 ): Promise<{ A: Float32Array; B: Float32Array; count: number }> {
   const read = async (buf: StorageBufferNode<'vec4'>): Promise<Float32Array> => {
+    if (layer.count === 0) return new Float32Array(0);
     const attr = (buf as unknown as { value: Parameters<Renderer['getArrayBufferAsync']>[0] }).value;
-    return new Float32Array(await renderer.getArrayBufferAsync(attr)).slice(0, layer.count * 4);
+    // accepted instances only (count · vec4 of f32), not the whole capacity
+    return new Float32Array(await renderer.getArrayBufferAsync(attr, null, 0, layer.count * 16));
   };
   const [A, B] = await Promise.all([read(layer.bufA), read(layer.bufB)]);
   return { A, B, count: layer.count };
 }
 
+/** sample the canopy coverage field at a world xz (filtered) */
 export function canopyAt(tex: StorageTexture, wxz: NV2): NF {
   const uv = wxz.div(WORLD_SIZE).add(0.5);
   return (texture(tex, uv) as unknown as NV4).x;

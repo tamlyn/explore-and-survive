@@ -42,13 +42,14 @@ export function terrainColliderDesc(rapier: Rapier, grid: TerrainGrid): RAPIER.C
 
 export class Physics {
   readonly world: RAPIER.World;
+  private readonly terrain: RAPIER.Collider | null;
 
   constructor(
     readonly rapier: Rapier,
     terrain: TerrainGrid | null,
   ) {
     this.world = new rapier.World({ x: 0, y: 0, z: 0 });
-    if (terrain) this.world.createCollider(terrainColliderDesc(rapier, terrain));
+    this.terrain = terrain ? this.world.createCollider(terrainColliderDesc(rapier, terrain)) : null;
     // colliders only become visible to queries once the broad phase has run
     this.world.step();
   }
@@ -57,11 +58,14 @@ export class Physics {
     this.world.step();
   }
 
-  /** straight-down ray: first surface height under (x, z), or null */
-  groundY(x: number, z: number, fromY = 1e4): number | null {
+  /** height of the terrain collider's surface under (x, z) — obstacles
+   *  ignored — or null outside the world */
+  terrainY(x: number, z: number): number | null {
+    if (!this.terrain) return null;
+    const fromY = 1e4;
     const ray = new this.rapier.Ray({ x, y: fromY, z }, { x: 0, y: -1, z: 0 });
-    const hit = this.world.castRay(ray, 2e4, true);
-    return hit ? fromY - hit.timeOfImpact : null;
+    const toi = this.terrain.castRay(ray, 2e4, true);
+    return toi >= 0 ? fromY - toi : null;
   }
 
   dispose(): void {

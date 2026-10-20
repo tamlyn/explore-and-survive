@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCamString, parseParams } from './Params';
+import { formatCamString, parseCamString, parseParams } from './Params';
 
 describe('parseParams', () => {
   it('defaults to the playable world with profiling off', () => {
@@ -27,6 +27,11 @@ describe('parseCamString', () => {
   it('parses a pose with optional fov', () => {
     expect(parseCamString('1,2,3,0.5,-0.1')).toEqual({ p: [1, 2, 3], yaw: 0.5, pitch: -0.1 });
     expect(parseCamString('1,2,3,0.5,-0.1,60')?.fov).toBe(60);
+  });
+
+  it('round-trips through formatCamString', () => {
+    const pose = { p: [1.5, -2.25, 300] as [number, number, number], yaw: 0.7854, pitch: -0.1, fov: 55 };
+    expect(parseCamString(formatCamString(pose))).toEqual(pose);
   });
 
   it('rejects malformed input', () => {

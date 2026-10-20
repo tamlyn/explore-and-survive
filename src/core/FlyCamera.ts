@@ -7,6 +7,7 @@
 
 import type { PerspectiveCamera } from 'three';
 import { Vector3 } from 'three';
+import { aimCamera } from './CameraAim';
 import type { CamPose } from './Hooks';
 import type { Input } from './Input';
 
@@ -42,7 +43,7 @@ export class FlyCamera {
     if (wheel !== 0) {
       this.speed = Math.min(2000, Math.max(0.5, this.speed * Math.pow(1.15, -wheel)));
     }
-    this.applyRotation();
+    aimCamera(this.camera, this.yaw, this.pitch);
 
     FORWARD.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
     RIGHT.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
@@ -82,7 +83,7 @@ export class FlyCamera {
       this.camera.fov = this.baseFov;
       this.camera.updateProjectionMatrix();
     }
-    this.applyRotation();
+    aimCamera(this.camera, this.yaw, this.pitch);
     // recompose matrixWorld/matrixWorldInverse NOW: subsystems copy camera
     // state in their own updateFns and must never read a stale matrix
     this.camera.updateMatrixWorld();
@@ -91,11 +92,5 @@ export class FlyCamera {
   getPose(): CamPose {
     const p = this.camera.position;
     return { p: [p.x, p.y, p.z], yaw: this.yaw, pitch: this.pitch, fov: this.baseFov };
-  }
-
-  private applyRotation(): void {
-    this.camera.rotation.set(0, 0, 0);
-    this.camera.rotateY(this.yaw);
-    this.camera.rotateX(this.pitch);
   }
 }

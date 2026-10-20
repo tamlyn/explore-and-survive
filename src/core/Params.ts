@@ -62,3 +62,15 @@ export function parseCamString(
   const pose = { p: [px, py, pz] as [number, number, number], yaw, pitch };
   return fov !== undefined && Number.isFinite(fov) ? { ...pose, fov } : pose;
 }
+
+/** inverse of parseCamString: "x,y,z,yaw,pitch,fov" (fov only when known) */
+export function formatCamString(pose: {
+  p: [number, number, number];
+  yaw: number;
+  pitch: number;
+  fov?: number;
+}): string {
+  const pos = pose.p.map((v) => v.toFixed(2)).join(',');
+  const fov = pose.fov !== undefined ? `,${pose.fov.toFixed(0)}` : '';
+  return `${pos},${pose.yaw.toFixed(4)},${pose.pitch.toFixed(4)}${fov}`;
+}

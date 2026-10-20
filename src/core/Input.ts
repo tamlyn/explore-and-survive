@@ -28,12 +28,9 @@ export class Input {
 
   constructor(dom: HTMLElement) {
     // ---- pointer lock, cooldown-aware ----------------------------------
-    // A click during the post-ESC cooldown used to fire requestPointerLock()
-    // unconditionally: the browser rejected it (console SecurityError — the
-    // `void` didn't swallow the promise rejection) and the click was lost;
-    // the user had to guess when to click again. Now: clicks inside the
-    // cooldown schedule the request for the cooldown's end, and a rejection/
-    // pointerlockerror retries while the click intent is fresh.
+    // A request inside the post-ESC cooldown is rejected and the click lost,
+    // so clicks in the cooldown schedule the request for its end, and a
+    // rejection/pointerlockerror retries while the click intent is fresh.
     let unlockAt = -1e9; // performance.now() of the last lock exit
     let lockIntentAt = -1e9; // last click asking for the lock
     let relockTimer: number | undefined;
@@ -120,15 +117,16 @@ export class Input {
     return this.enabled && this.keys.has(code);
   }
 
-  /** true once per keydown (repeats excluded) since the last take */
+  /** true once per keydown (repeats excluded) this frame — regardless of
+   *  `enabled`, so tooling keys still work while a flythrough runs */
   takePress(code: string): boolean {
-    const hit = this.presses.delete(code);
-    return hit && this.enabled;
+    return this.presses.delete(code);
   }
 
-  /** drop presses nobody took this frame, so they can't fire later */
+  /** drop presses and wheel nobody took this frame, so they can't fire later */
   endFrame(): void {
     this.presses.clear();
+    this.wheelV = 0;
   }
 
   /** mouse-look delta in radians (yaw right +, pitch down +) since the last take */
