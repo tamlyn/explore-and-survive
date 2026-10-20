@@ -4,41 +4,18 @@
  * terrain.
  */
 
-import {
-  DataTexture,
-  Group,
-  Mesh,
-  NearestFilter,
-  RedFormat,
-  RepeatWrapping,
-  SRGBColorSpace,
-  type Texture,
-  TextureLoader,
-  UnsignedByteType,
-} from 'three';
-import { IrradianceNode, MeshStandardNodeMaterial, type StorageTexture } from 'three/webgpu';
+import { Group, Mesh, RepeatWrapping, SRGBColorSpace, type Texture, TextureLoader } from 'three';
+import { MeshStandardNodeMaterial, type StorageTexture } from 'three/webgpu';
 import { attribute, mix, normalMap, normalWorld, positionWorld, smoothstep, texture, uv, vec3 } from 'three/tsl';
 import armUrl from '../../assets/textures/stone_wall_arm.jpg?url';
 import diffUrl from '../../assets/textures/stone_wall_diff.jpg?url';
 import norUrl from '../../assets/textures/stone_wall_nor_gl.jpg?url';
 import { fbm3, valueNoise3 } from '../gpu/noise/NoiseTSL';
-import { canopyAt } from '../gpu/passes/Scatter';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import type { NF, NV3, NV4 } from '../gpu/TSLTypes';
+import { lightWithProbes } from '../render/ProbeLighting';
 import { blockGeometry } from './RuinGeometry';
-import { type Block, clearingMask, type Ground, type RuinSite } from './RuinPlan';
-import { WORLD_SIZE } from './WorldConst';
-
-/** 2 m texels: fine enough for a house footprint */
-const CLEARING_RES = 2048;
-
-/** the scatter's keep-clear mask (see clearingMask) as a GPU texture */
-export function clearingTexture(sites: RuinSite[]): DataTexture {
-  const tex = new DataTexture(clearingMask(sites, CLEARING_RES, WORLD_SIZE), CLEARING_RES, CLEARING_RES, RedFormat, UnsignedByteType);
-  tex.magFilter = tex.minFilter = NearestFilter;
-  tex.needsUpdate = true;
-  return tex;
-}
+import type { Block, Ground } from './RuinPlan';
 
 async function loadTexture(url: string, srgb: boolean): Promise<Texture> {
   const tex = await new TextureLoader().loadAsync(url);
@@ -73,13 +50,7 @@ async function masonryMaterial(gi: ProbeGI | null, canopyTex: StorageTexture | n
   mat.roughnessNode = a.g;
   mat.aoNode = a.r;
   mat.metalness = 0;
-  if (gi) {
-    // the same probe ambient as the terrain, or interiors glow like open sky
-    let irr = gi.irradiance(wp, normalWorld as unknown as NV3);
-    if (canopyTex) irr = irr.mul(canopyAt(canopyTex, wp.xz).mul(0.12).oneMinus()) as typeof irr;
-    (mat as unknown as { setupLightMap: () => unknown }).setupLightMap = () =>
-      new IrradianceNode(irr as unknown as ConstructorParameters<typeof IrradianceNode>[0]);
-  }
+  if (gi) lightWithProbes(mat, gi, canopyTex);
   return mat;
 }
 

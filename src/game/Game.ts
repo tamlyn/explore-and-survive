@@ -19,7 +19,7 @@ import { GameHud } from './GameHud';
 import { Gunplay } from './Gunplay';
 import { Impacts } from './Impacts';
 import { ObstacleStreamer, type ObstacleField } from './Obstacles';
-import { boxColliderDesc, type Box, loadRapier, Physics, type TerrainGrid } from './Physics';
+import { boxColliderDesc, type Box, loadRapier, Physics, type Surface, type TerrainGrid } from './Physics';
 import { Player } from './Player';
 import { PlayerMotor } from './PlayerMotor';
 import { Sfx } from './Sfx';
@@ -32,8 +32,8 @@ export interface GameWorld {
   waterAt: (x: number, z: number) => number;
   /** trunks, rocks, logs… — absent in scenes without vegetation */
   obstacles?: ObstacleField;
-  /** man-made solids (ruined walls), few enough to stay in physics for good */
-  structures?: Box[];
+  /** man-made solids (ruined walls, props), few enough to stay in physics for good */
+  structures?: (Box & { surface: Surface })[];
   /** the sun and ambient, mirrored onto the viewmodel */
   lights?: WorldLights;
 }
@@ -81,7 +81,7 @@ export class Game {
   async attachWorld(world: GameWorld): Promise<void> {
     const rapier = await loadRapier();
     const physics = new Physics(rapier, world.terrain);
-    for (const box of world.structures ?? []) physics.addCollider(boxColliderDesc(rapier, box), 'stone');
+    for (const box of world.structures ?? []) physics.addCollider(boxColliderDesc(rapier, box), box.surface);
     const motor = new PlayerMotor(rapier, physics.world, world.waterAt);
     const player = new Player(motor, () => physics.step());
     const obstacles = world.obstacles

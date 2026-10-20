@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  alongWall,
   type Block,
   type Building,
   buildingBlocks,
-  CLEAR_ALL,
-  CLEAR_TREES,
-  clearingMask,
+  doorway,
   footprintRadius,
   type Ground,
   planRuins,
+  wallRuns,
 } from './RuinPlan';
-import { WORLD_HALF, WORLD_SIZE } from './WorldConst';
+import { WORLD_HALF } from './WorldConst';
 
 const flat: Ground = { height: () => 200, water: () => 0 };
 /** a lake covers x < 0 */
@@ -102,27 +102,19 @@ describe('buildingBlocks', () => {
     expect(lowest).toBeCloseTo(200 - 0.4, 5);
   });
 
-  it('leaves a doorway through some wall', () => {
+  it('cuts the doorway through its wall and nowhere else', () => {
     const solids = buildingBlocks(house, flat).filter((b) => b.solid);
-    // walk the wall line of every side at door height looking for a gap
-    const c = Math.cos(house.yaw);
-    const s = Math.sin(house.yaw);
-    const sides = [
-      (u: number) => [u, -3 + 0.275],
-      (u: number) => [u, 3 - 0.275],
-      (u: number) => [-4 + 0.275, u],
-      (u: number) => [4 - 0.275, u],
-    ];
-    const gap = sides.some((side) => {
-      for (let u = -2; u <= 2; u += 0.1) {
-        const [lx, lz] = side(u) as [number, number];
-        const x = house.x + lx * c + lz * s;
-        const z = house.z - lx * s + lz * c;
-        if (!solids.some((b) => contains(b, x, 201, z))) return true;
-      }
-      return false;
-    });
-    expect(gap).toBe(true);
+    const door = doorway(house, flat)!;
+    const w = wallRuns(house)[door.wall]!;
+    const cw = w.length / w.columns;
+    const solidAt = (u: number, y: number): boolean => {
+      const p = alongWall(house, w, u);
+      return solids.some((b) => contains(b, p.x, y, p.z));
+    };
+    expect(solidAt(((door.j0 + door.j1) / 2) * cw, 201)).toBe(false);
+    // the wall stands either side of the opening
+    expect(solidAt((door.j0 - 0.5) * cw, 200.5)).toBe(true);
+    expect(solidAt((door.j1 + 0.5) * cw, 200.5)).toBe(true);
   });
 
   it('drops loose rubble on the ground', () => {
@@ -130,19 +122,5 @@ describe('buildingBlocks', () => {
     const rubble = buildingBlocks(tall, flat).filter((b) => !b.solid);
     expect(rubble.length).toBeGreaterThan(0);
     for (const r of rubble) expect(Math.abs(r.y - 200)).toBeLessThan(0.3);
-  });
-});
-
-describe('clearingMask', () => {
-  it('clears everything under a building and trees around it', () => {
-    const res = 1024;
-    const texel = WORLD_SIZE / res;
-    const b: Building = { x: 100, z: -60, yaw: 0, width: 8, depth: 6, storeys: 1, seed: 1 };
-    const mask = clearingMask([{ x: 100, z: -60, buildings: [b] }], res, WORLD_SIZE);
-    const at = (x: number, z: number): number =>
-      mask[Math.floor(z / texel + res / 2) * res + Math.floor(x / texel + res / 2)] as number;
-    expect(at(100, -60)).toBe(CLEAR_ALL);
-    expect(at(100 + footprintRadius(b) + 2, -60)).toBe(CLEAR_TREES);
-    expect(at(100 + 20, -60)).toBe(0);
   });
 });

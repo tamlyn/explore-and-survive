@@ -9,7 +9,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 export type Rapier = typeof RAPIER;
 
 /** what a static collider is made of — drives impact effects */
-export type Surface = 'ground' | 'wood' | 'stone';
+export type Surface = 'ground' | 'wood' | 'stone' | 'metal' | 'rubber';
 
 export interface RayHit {
   x: number;

@@ -27,7 +27,7 @@ import {
   Vector3,
   Vector4,
 } from 'three';
-import type { DataTexture, PerspectiveCamera } from 'three';
+import type { DataTexture, PerspectiveCamera, Texture } from 'three';
 import {
   IndirectStorageBufferAttribute,
   IrradianceNode,
@@ -310,6 +310,9 @@ export class GroundRing {
     private canopyTex: StorageTexture,
     private seed: WorldSeed,
     private gi: ProbeGI | null = null,
+    /** settlement clearing mask (see Clearing): grass thins to scruff
+     *  where it reads 1, so it doesn't swallow floors and props */
+    private clearing: Texture | null = null,
   ) {}
 
   /**
@@ -474,6 +477,10 @@ export class GroundRing {
       dens = dens
         .mul(float(1).sub(bio.y.mul(0.95)))
         .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)));
+      if (this.clearing) {
+        const clear = (texture(this.clearing, uvW, 0) as unknown as NV4).x;
+        dens = dens.mul(float(1).sub(clear.greaterThan(0.75).select(float(0.85), float(0))));
+      }
       // coverage-conserving continuous LOD ("cheap nanite for aggregates"):
       // accept thins SMOOTHLY with distance — survivors widen by 1/sqrt(thin)
       // in the vertex stage, so screen coverage stays constant and there are

@@ -61,7 +61,8 @@ const BUILDING_RELIEF = 1.8;
 const FIRST_SITE_MIN = 30;
 const FIRST_SITE_MAX = 120;
 
-const WALL = 0.55;
+/** wall thickness (m) */
+export const WALL = 0.55;
 const COURSE = 0.3;
 const STOREY = 2.9;
 const COLUMN = 0.6;
@@ -105,8 +106,6 @@ function firstSite(ground: Ground, spawn: { x: number; z: number; yaw: number })
 }
 
 function buildingFits(ground: Ground, b: Building): boolean {
-  const c = Math.cos(b.yaw);
-  const s = Math.sin(b.yaw);
   let lo = Infinity;
   let hi = -Infinity;
   for (const [lx, lz] of [
@@ -115,10 +114,9 @@ function buildingFits(ground: Ground, b: Building): boolean {
     [1, 1],
     [-1, 1],
   ] as const) {
-    const px = b.x + ((lx * b.width) / 2) * c + ((lz * b.depth) / 2) * s;
-    const pz = b.z - ((lx * b.width) / 2) * s + ((lz * b.depth) / 2) * c;
-    const h = ground.height(px, pz);
-    if (ground.water(px, pz) > h - 0.2) return false;
+    const p = toWorld(b, (lx * b.width) / 2, (lz * b.depth) / 2);
+    const h = ground.height(p.x, p.z);
+    if (ground.water(p.x, p.z) > h - 0.2) return false;
     lo = Math.min(lo, h);
     hi = Math.max(hi, h);
   }
@@ -243,16 +241,78 @@ function columnSpans(bottom: number, top: number, cuts: { bottom: number; top: n
   return spans.filter(([a, b]) => b - a >= COURSE * 0.9);
 }
 
+/** one straight run of wall in the building's frame */
+export interface WallRun {
+  /** where the run starts, on its centre line */
+  ox: number;
+  oz: number;
+  alongX: boolean;
+  length: number;
+  /** outward normal */
+  nx: number;
+  nz: number;
+  /** the masonry columns it's built from */
+  columns: number;
+}
+
+/** front and back span the full width; the sides fit between them */
+export function wallRuns(b: Building): WallRun[] {
+  const hw = b.width / 2;
+  const hd = b.depth / 2;
+  const run = (ox: number, oz: number, alongX: boolean, length: number, nx: number, nz: number): WallRun => ({
+    ox,
+    oz,
+    alongX,
+    length,
+    nx,
+    nz,
+    columns: Math.max(1, Math.round(length / COLUMN)),
+  });
+  return [
+    run(-hw, -hd + WALL / 2, true, b.width, 0, -1),
+    run(-hw, hd - WALL / 2, true, b.width, 0, 1),
+    run(-hw + WALL / 2, -hd + WALL, false, b.depth - 2 * WALL, -1, 0),
+    run(hw - WALL / 2, -hd + WALL, false, b.depth - 2 * WALL, 1, 0),
+  ];
+}
+
+/** building frame → world */
+export function toWorld(b: Building, lx: number, lz: number): { x: number; z: number } {
+  const c = Math.cos(b.yaw);
+  const s = Math.sin(b.yaw);
+  return { x: b.x + lx * c + lz * s, z: b.z - lx * s + lz * c };
+}
+
+/** `u` along a run and `out` metres outward from its centre line, in the world */
+export function alongWall(b: Building, w: WallRun, u: number, out = 0): { x: number; z: number } {
+  return toWorld(b, w.ox + (w.alongX ? u : 0) + w.nx * out, w.oz + (w.alongX ? 0 : u) + w.nz * out);
+}
+
+export interface Doorway {
+  wall: number;
+  /** columns cut, end exclusive */
+  j0: number;
+  j1: number;
+}
+
+/** the door goes in the wall on the highest ground, so it opens at grade */
+export function doorway(b: Building, ground: Ground): Doorway | null {
+  const walls = wallRuns(b);
+  const mid = walls.map((w) => {
+    const p = alongWall(b, w, w.length / 2);
+    return ground.height(p.x, p.z);
+  });
+  const wall = mid.indexOf(Math.max(...mid));
+  const n = (walls[wall] as WallRun).columns;
+  if (n < 5) return null;
+  const j0 = 1 + new Rng(b.seed).fork('door').int(n - 4);
+  return { wall, j0, j1: j0 + 2 };
+}
+
 /** the walls (solid) and fallen rubble (loose) of one building */
 export function buildingBlocks(b: Building, ground: Ground): Block[] {
   const rng = new Rng(b.seed);
-  const c = Math.cos(b.yaw);
-  const s = Math.sin(b.yaw);
   const q: Block['q'] = [0, Math.sin(b.yaw / 2), 0, Math.cos(b.yaw / 2)];
-  const world = (lx: number, lz: number): { x: number; z: number } => ({
-    x: b.x + lx * c + lz * s,
-    z: b.z - lx * s + lz * c,
-  });
   const hw = b.width / 2;
   const hd = b.depth / 2;
   const floor = Math.max(
@@ -262,45 +322,28 @@ export function buildingBlocks(b: Building, ground: Ground): Block[] {
       [-hw, hd],
       [hw, hd],
     ].map(([lx, lz]) => {
-      const p = world(lx as number, lz as number);
+      const p = toWorld(b, lx as number, lz as number);
       return ground.height(p.x, p.z);
     }),
   );
   const full = b.storeys * STOREY + COURSE;
-
-  // front and back span the full width; the sides fit between them
-  const walls = [
-    { ox: -hw, oz: -hd + WALL / 2, alongX: true, length: b.width },
-    { ox: -hw, oz: hd - WALL / 2, alongX: true, length: b.width },
-    { ox: -hw + WALL / 2, oz: -hd + WALL, alongX: false, length: b.depth - 2 * WALL },
-    { ox: hw - WALL / 2, oz: -hd + WALL, alongX: false, length: b.depth - 2 * WALL },
-  ];
-  const at = (w: (typeof walls)[number], u: number): { x: number; z: number } =>
-    w.alongX ? world(w.ox + u, w.oz) : world(w.ox, w.oz + u);
-  // the door goes in the wall on the highest ground, so it opens at grade
-  const mid = walls.map((w) => {
-    const p = at(w, w.length / 2);
-    return ground.height(p.x, p.z);
-  });
-  const doorWall = mid.indexOf(Math.max(...mid));
+  const walls = wallRuns(b);
+  const door = doorway(b, ground);
 
   const blocks: Block[] = [];
   walls.forEach((w, wi) => {
-    const n = Math.max(1, Math.round(w.length / COLUMN));
+    const n = w.columns;
     const cw = w.length / n;
     let lowest = Infinity;
     for (let j = 0; j <= n; j++) {
-      const p = at(w, j * cw);
+      const p = alongWall(b, w, j * cw);
       lowest = Math.min(lowest, ground.height(p.x, p.z));
     }
     const bottom = lowest - FOOTING;
     const tops = damageProfile(rng, n, full);
 
     const openings: Opening[] = [];
-    if (wi === doorWall && n >= 5) {
-      const j0 = 1 + rng.int(n - 4);
-      openings.push({ j0, j1: j0 + 2, bottom: 0, top: 2.1 });
-    }
+    if (door?.wall === wi) openings.push({ j0: door.j0, j1: door.j1, bottom: 0, top: 2.1 });
     for (let storey = 0; storey < b.storeys; storey++) {
       for (let j = 2 + rng.int(2); j + 2 < n; j += 3 + rng.int(3)) {
         const j1 = j + (rng.chance(0.5) ? 1 : 2);
@@ -324,7 +367,7 @@ export function buildingBlocks(b: Building, ground: Ground): Block[] {
     for (let j = 1; j <= n; j++) {
       if (j < n && sameSpans(spans[j] as [number, number][], spans[j0] as [number, number][])) continue;
       const u = ((j0 + j) / 2) * cw;
-      const p = at(w, u);
+      const p = alongWall(b, w, u);
       const half = ((j - j0) * cw) / 2;
       for (const [y0, y1] of spans[j0] as [number, number][]) {
         blocks.push({
@@ -346,8 +389,7 @@ export function buildingBlocks(b: Building, ground: Ground): Block[] {
       const fallen = Math.floor((full - (tops[j] as number)) * rng.range(0, 2));
       for (let k = 0; k < fallen; k++) {
         const side = (rng.chance(0.5) ? 1 : -1) * (WALL / 2 + rng.range(0.1, 1.6));
-        const u = (j + rng.float()) * cw;
-        const p = w.alongX ? world(w.ox + u, w.oz + side) : world(w.ox + side, w.oz + u);
+        const p = alongWall(b, w, (j + rng.float()) * cw, side);
         blocks.push(rubble(rng, p.x, p.z, ground));
       }
     }
@@ -386,38 +428,4 @@ function mulQuat(a: Block['q'], b: Block['q']): Block['q'] {
     aw * bz + ax * by - ay * bx + az * bw,
     aw * bw - ax * bx - ay * by - az * bz,
   ];
-}
-
-/** clear-ground levels in the scatter mask */
-export const CLEAR_TREES = 128;
-export const CLEAR_ALL = 255;
-/** trees keep this far back from a building's footprint (m): settlements stand in clearings, and can be seen into */
-const TREE_MARGIN = 8;
-
-/**
- * World-spanning mask (row-major by z, like the heightfield) of where the
- * scatter must leave the ground clear: everything under a building, and
- * trees and big debris around it.
- */
-export function clearingMask(sites: RuinSite[], res: number, worldSize: number): Uint8Array {
-  const mask = new Uint8Array(res * res);
-  const texel = worldSize / res;
-  for (const site of sites) {
-    for (const b of site.buildings) {
-      const inner = footprintRadius(b) + 0.5;
-      const outer = inner + TREE_MARGIN;
-      const i0 = Math.max(0, Math.floor((b.x - outer) / texel + res / 2));
-      const i1 = Math.min(res - 1, Math.ceil((b.x + outer) / texel + res / 2));
-      const k0 = Math.max(0, Math.floor((b.z - outer) / texel + res / 2));
-      const k1 = Math.min(res - 1, Math.ceil((b.z + outer) / texel + res / 2));
-      for (let k = k0; k <= k1; k++) {
-        for (let i = i0; i <= i1; i++) {
-          const d = Math.hypot((i + 0.5 - res / 2) * texel - b.x, (k + 0.5 - res / 2) * texel - b.z);
-          const v = d <= inner ? CLEAR_ALL : d <= outer ? CLEAR_TREES : 0;
-          if (v > (mask[k * res + i] as number)) mask[k * res + i] = v;
-        }
-      }
-    }
-  }
-  return mask;
 }

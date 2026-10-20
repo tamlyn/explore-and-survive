@@ -27,7 +27,10 @@ import { WaterSurface } from '../world/WaterSurface';
 import { WORLD_SIZE } from '../world/WorldConst';
 import { ObstacleField } from '../game/Obstacles';
 import { buildingBlocks, type Ground, planRuins } from '../world/RuinPlan';
-import { buildRuins, clearingTexture } from '../world/Ruins';
+import { buildRuins } from '../world/Ruins';
+import { clearingTexture, settlementClearings } from '../world/Clearing';
+import { planProps } from '../world/PropPlan';
+import { type PropBox, Props } from '../world/Props';
 import { obstacleTemplates } from '../game/ObstacleTemplates';
 import { PostStack } from '../render/PostStack';
 import { setupSunShadows } from '../render/ShadowSetup';
@@ -82,6 +85,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       ? planRuins(ground, seed.sub('ruins'), { x: spawn.x, z: spawn.z, yaw: SPAWN_YAW })
       : [];
   const ruinBlocks = ruinSites.map((site) => site.buildings.flatMap((b) => buildingBlocks(b, ground)));
+  const props = planProps(ruinSites, ground, seed.sub('props'));
   engine.stats.counters['ruins.sites'] = ruinSites.length;
 
   // vegetation/rock placement (Phase 5): GPU clustered-Poisson scatter +
@@ -89,7 +93,8 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   // heightfield; the canopy map is their only knowledge of the forest) and
   // before tiles (under-crown ambient)
   ctx.progress(0.94, 'vegetation: scattering instances');
-  const scatter = await runScatter(engine.renderer, hf, seed, ruinSites.length ? clearingTexture(ruinSites) : null);
+  const clearing = ruinSites.length ? clearingTexture(settlementClearings(ruinSites, props)) : null;
+  const scatter = await runScatter(engine.renderer, hf, seed, clearing);
   const canopyTex = await buildCanopyMap(engine.renderer, scatter.trees);
   engine.stats.counters['veg.trees'] = scatter.trees.count;
   engine.stats.counters['veg.under'] = scatter.understory.count;
@@ -203,7 +208,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
 
     // near-field carpets: grass ring + debris ring
     if (!ablate.has('grass')) {
-      const ring = new GroundRing(hf, canopyTex, seed, ablate.has('gi') ? null : gi);
+      const ring = new GroundRing(hf, canopyTex, seed, ablate.has('gi') ? null : gi, clearing);
       ring.init(lib.atlases.get('beech') ?? null);
       engine.scene.add(ring.group);
       engine.onUpdate(() => {
@@ -218,8 +223,14 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     }
   }
 
+  let propBoxes: PropBox[] = [];
   if (ruinBlocks.length && view !== 'split') {
-    engine.scene.add(await buildRuins(ruinBlocks, ground, ablate.has('gi') ? null : gi, canopyTex));
+    const ruinGi = ablate.has('gi') ? null : gi;
+    engine.scene.add(await buildRuins(ruinBlocks, ground, ruinGi, canopyTex));
+    const propField = await Props.load(props, ruinGi, canopyTex);
+    engine.scene.add(propField.group);
+    engine.onUpdate(() => propField.update(engine.camera.position));
+    propBoxes = propField.colliders();
   }
 
   // volumetric clouds (noise bake + sun-shadow map)
@@ -245,6 +256,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     sunSky,
     shadowRig,
     ruinSites,
+    props,
   };
 
   // GPU particles: snow/pollen/leaves riding the wind (?ablate=particles)
@@ -295,7 +307,10 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
-      structures: ruinBlocks.flat().filter((b) => b.solid),
+      structures: [
+        ...ruinBlocks.flat().filter((b) => b.solid).map((b) => ({ ...b, surface: 'stone' as const })),
+        ...propBoxes,
+      ],
       ...(obstacles ? { obstacles } : {}),
     };
   }

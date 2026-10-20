@@ -21,6 +21,8 @@ const LOOK: Record<ImpactSurface, { color: Color; size: number; rise: number }> 
   ground: { color: new Color(0.3, 0.25, 0.18), size: 0.4, rise: 0.9 },
   wood: { color: new Color(0.36, 0.25, 0.15), size: 0.3, rise: 0.7 },
   stone: { color: new Color(0.5, 0.49, 0.46), size: 0.32, rise: 0.8 },
+  metal: { color: new Color(0.62, 0.6, 0.56), size: 0.14, rise: 1.6 },
+  rubber: { color: new Color(0.12, 0.11, 0.1), size: 0.18, rise: 0.6 },
   water: { color: new Color(0.85, 0.9, 0.95), size: 0.45, rise: 2.4 },
 };
 
