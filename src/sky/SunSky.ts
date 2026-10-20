@@ -24,7 +24,8 @@ export class SunSky {
   private renderer: Renderer | null = null;
   private iblDirty = true;
   private sunDirWorld = new Vector3();
-  private hemi!: HemisphereLight;
+  /** sky/ground ambient */
+  readonly hemi: HemisphereLight;
   /** ambient floor scale: dropped to ~0.15 when probe GI is active */
   private ambientScale = 1;
 

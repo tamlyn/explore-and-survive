@@ -5,11 +5,15 @@
  *   → GTAO multiply (Phase-3 refines to indirect-only)
  *   → TRAA (temporal AA — the geometric density shimmers without it)
  *   → bloom (HDR threshold)
+ *   → overlay (the first-person viewmodel: its own scene and camera, laid
+ *     over the world so it never clips into it, and after TRAA so it
+ *     doesn't ghost — the world's reprojection doesn't know it moves)
  *   → auto-exposure (GPU histogram-free log-average, smoothed, no readback)
  *   → filmic grade (per-ToD color script: white balance, teal–orange split
  *     toning, saturation, contrast) → AgX via renderer.toneMapping
  */
 
+import type { Camera, Scene } from 'three';
 import { AgXToneMapping, Matrix4, NoToneMapping, Vector2, Vector3 } from 'three';
 import type { Renderer, StorageBufferNode } from 'three/webgpu';
 import { RenderPipeline } from 'three/webgpu';
@@ -55,6 +59,12 @@ import { runiform } from '../gpu/RenderUniform';
 import { gtaoLayer } from './Gtao';
 import { HalfResMrtNode, type HalfResEntry } from './HalfResMrt';
 
+/** a scene drawn over the world after the world's own effects */
+export interface Overlay {
+  scene: Scene;
+  camera: Camera;
+}
+
 export class PostStack {
   readonly post: RenderPipeline;
   private grade = new GradeUniforms();
@@ -67,6 +77,7 @@ export class PostStack {
     tod: number,
     clouds: Clouds | null = null,
     froxels: Froxels | null = null,
+    overlay: Overlay | null = null,
   ) {
     const { renderer, scene, camera } = engine;
     const q = new URLSearchParams(window.location.search);
@@ -510,9 +521,26 @@ export class PostStack {
 
     // --- bloom -----------------------------------------------------------------------
     const taaedRgb = (taaed as unknown as NV4).rgb;
-    const withBloom = ablate.has('bloom')
+    const bloomed = ablate.has('bloom')
       ? taaedRgb
       : taaedRgb.add((bloom(taaed, 0.28, 0.45, 1.5) as unknown as NV4).rgb);
+
+    // --- overlay (premultiplied: cleared to transparent black) -----------------------
+    let withBloom = bloomed;
+    if (overlay) {
+      const overlayPass = pass(overlay.scene, overlay.camera, { samples: 4 });
+      tagGpu(overlayPass.renderTarget as object, 'overlay');
+      const renderOverlay = overlayPass.updateBefore.bind(overlayPass);
+      overlayPass.updateBefore = (frame) => {
+        const alpha = renderer.getClearAlpha();
+        renderer.setClearAlpha(0);
+        const result = renderOverlay(frame);
+        renderer.setClearAlpha(alpha);
+        return result;
+      };
+      const ov = overlayPass.getTextureNode('output');
+      withBloom = bloomed.mul(ov.a.oneMinus()).add(ov.rgb);
+    }
 
     // --- auto exposure (GPU-only feedback) ----------------------------------------------
     this.exposureBuf = instancedArray(2, 'float');

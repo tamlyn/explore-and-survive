@@ -81,6 +81,14 @@ describe('ObstacleField', () => {
     expect(got).toEqual(want);
   });
 
+  it('counts only trunks for tree cover', () => {
+    const field = new ObstacleField(
+      [arrays([{ x: 1, z: 0, id: 0 }, { x: 0, z: 2, id: 0 }, { x: 1, z: 1, id: 160 }, { x: 9, z: 0, id: 0 }])],
+      TEMPLATES,
+    );
+    expect(field.trunksNear(0, 0, 5)).toBe(2);
+  });
+
   it('skips instances without a template (understory, pebbles)', () => {
     const field = new ObstacleField([arrays([{ x: 0, z: 0, id: 8 * 11 }, { x: 1, z: 0, id: 0 }])], TEMPLATES);
     expect(field.size).toBe(1);

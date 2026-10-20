@@ -53,7 +53,7 @@ async function boot(): Promise<void> {
   // in registration order, and subsystems copy camera state in their own
   // updates — the mover has to run first or every copy is one frame stale
   // during interactive motion (clouds/aerial visibly lagged the camera).
-  const game = new Game(engine.camera, engine.renderer.domElement);
+  const game = new Game(engine.camera, engine.scene, engine.renderer.domElement);
   engine.onUpdate((dt) => game.update(dt));
 
   const seed = new WorldSeed(params.seed);
@@ -70,6 +70,7 @@ async function boot(): Promise<void> {
     seed,
     hooks,
     progress: (p, msg) => bootUI.set(0.1 + p * 0.85, msg),
+    overlay: game.viewmodel,
   };
   await buildScene(params.scene, ctx);
 

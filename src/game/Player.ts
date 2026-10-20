@@ -72,10 +72,15 @@ export class Player {
     this.setEye(1);
   }
 
+  /** turn the aim (rad; yaw left +, pitch up +) */
+  addAim(dYaw: number, dPitch: number): void {
+    this.yaw += dYaw;
+    this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch + dPitch));
+  }
+
   update(dt: number, input: PlayerInput): void {
     const look = input.takeLook();
-    this.yaw -= look.yaw;
-    this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - look.pitch));
+    this.addAim(-look.yaw, -look.pitch);
     if (input.takePress('Space')) this.jumpBuffer = JUMP_BUFFER;
 
     // wish velocity in the yaw plane — pitch never tilts the gait

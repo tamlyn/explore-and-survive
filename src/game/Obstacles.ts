@@ -110,6 +110,11 @@ export class ObstacleField {
     return out;
   }
 
+  /** how many tree trunks stand within `r` of (x, z) */
+  trunksNear(x: number, z: number, r: number): number {
+    return this.near(x, z, r).filter((id) => (this.entries[id] as Entry).template.kind === 'trunk').length;
+  }
+
   /** squared horizontal distance from (x, z) to obstacle `id`'s base */
   distanceSq(id: number, x: number, z: number): number {
     const { src, i } = this.entries[id] as Entry;

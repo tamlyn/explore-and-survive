@@ -5,6 +5,7 @@ import type { LaasHooks } from '../core/Hooks';
 import type { LaasParams } from '../core/Params';
 import type { WorldSeed } from '../core/Seed';
 import type { GameWorld } from '../game/Game';
+import type { Overlay } from '../render/PostStack';
 
 export interface WorldContext {
   engine: Engine;
@@ -15,6 +16,8 @@ export interface WorldContext {
   progress: (p: number, msg: string) => void;
   /** set by scenes with playable terrain — the game layer attaches to it */
   gameWorld?: GameWorld;
+  /** the game's first-person layer, for scenes with a post stack to draw */
+  overlay?: Overlay;
 }
 
 export type SceneBuilder = (ctx: WorldContext) => Promise<void>;

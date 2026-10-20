@@ -246,7 +246,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
 
   // HDR post stack: aerial perspective, clouds, GTAO, TRAA, bloom, exposure, grade
   ctx.progress(0.98, 'post: building pipeline');
-  const post = new PostStack(engine, sunSky.atmosphere, bootTod, clouds, froxels);
+  const post = new PostStack(engine, sunSky.atmosphere, bootTod, clouds, froxels, ctx.overlay ?? null);
   engine.post = post;
 
   ctx.hooks.setTimeOfDay = (t: number) => {
@@ -273,6 +273,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     ctx.gameWorld = {
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
+      lights: { sun: sunSky.sun, ambient: sunSky.hemi },
       ...(obstacles ? { obstacles } : {}),
     };
   }

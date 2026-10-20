@@ -1,7 +1,8 @@
 /**
  * Smoke test — boots the default game spawn and checks the player actually
  * plays: starts in play mode, walking moves them, the eye stays at head
- * height above the ground, and nothing throws. Needs the dev server on :5173.
+ * height above the ground, the gun fires and reloads, and nothing throws.
+ * Needs the dev server on :5173.
  *
  *   npm run smoke
  */
@@ -56,6 +57,27 @@ check(
   heights.every((h) => h > 1.5 && h < 1.95),
   `eye stays at head height (${Math.min(...heights).toFixed(2)}–${Math.max(...heights).toFixed(2)} m)`,
 );
+// headless Chromium refuses pointer lock, so fake it: Input only cares
+// about pointerLockElement and the change event
+await page.evaluate(`(() => {
+  const canvas = document.querySelector('#app canvas');
+  Object.defineProperty(document, 'pointerLockElement', { get: () => canvas, configurable: true });
+  document.dispatchEvent(new Event('pointerlockchange'));
+})()`);
+const AMMO = `[...document.querySelectorAll('div')].map((d) => d.textContent ?? '').find((t) => /^\\d+ \\/ \\d+$|^reloading$/.test(t)) ?? ''`;
+const ammo = (): Promise<string> => page.evaluate(AMMO) as Promise<string>;
+const before = await ammo();
+await page.mouse.click(640, 400);
+await page.waitForTimeout(300);
+const after = await ammo();
+check(before === '12 / 12' && after === '11 / 12', `firing spends a round (${before} → ${after})`);
+await page.keyboard.press('KeyR');
+await page.waitForTimeout(300);
+const reloading = await ammo();
+await page.waitForTimeout(1500);
+const reloaded = await ammo();
+check(reloading === 'reloading' && reloaded === '12 / 12', `R reloads (${reloading} → ${reloaded})`);
+
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 
 await browser.close();
