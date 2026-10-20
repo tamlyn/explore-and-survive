@@ -43,6 +43,7 @@ import {
 } from '../gpu/passes/HeightSynthesis';
 import { makeMacroParams, type MacroParams } from './MacroMap';
 import { WORLD_SIZE, qualityConfig, type QualityConfig } from './WorldConst';
+import { sampleGrid } from './GridSample';
 
 export type ProgressFn = (p: number, msg: string) => void;
 
@@ -196,37 +197,13 @@ export class Heightfield {
 
   /** CPU height lookup (bilinear) — camera clamping, bookmarks, tools */
   heightAtCpu(x: number, z: number): number {
-    const hts = this.cpuHeights;
-    if (!hts) return 0;
-    const res = this.res;
-    const gx = Math.min(Math.max(((x / WORLD_SIZE) + 0.5) * res - 0.5, 0), res - 1.001);
-    const gz = Math.min(Math.max(((z / WORLD_SIZE) + 0.5) * res - 0.5, 0), res - 1.001);
-    const x0 = Math.floor(gx);
-    const z0 = Math.floor(gz);
-    const fx = gx - x0;
-    const fz = gz - z0;
-    const i = (xx: number, zz: number): number => hts[Math.min(zz, res - 1) * res + Math.min(xx, res - 1)] ?? 0;
-    const a = i(x0, z0) * (1 - fx) + i(x0 + 1, z0) * fx;
-    const b = i(x0, z0 + 1) * (1 - fx) + i(x0 + 1, z0 + 1) * fx;
-    return a * (1 - fz) + b * fz;
+    return this.cpuHeights ? sampleGrid(this.cpuHeights, this.res, WORLD_SIZE, x, z) : 0;
   }
 
   /** CPU waterY lookup (bilinear, sim res) — dry cells sit ~2 m below the
    *  bed, so `max(ground, waterYAtCpu + ε)` is a safe camera floor */
   waterYAtCpu(x: number, z: number): number {
-    const wy = this.cpuWaterY;
-    if (!wy) return -1e4;
-    const res = this.simRes;
-    const gx = Math.min(Math.max(((x / WORLD_SIZE) + 0.5) * res - 0.5, 0), res - 1.001);
-    const gz = Math.min(Math.max(((z / WORLD_SIZE) + 0.5) * res - 0.5, 0), res - 1.001);
-    const x0 = Math.floor(gx);
-    const z0 = Math.floor(gz);
-    const fx = gx - x0;
-    const fz = gz - z0;
-    const i = (xx: number, zz: number): number => wy[Math.min(zz, res - 1) * res + Math.min(xx, res - 1)] ?? -1e4;
-    const a = i(x0, z0) * (1 - fx) + i(x0 + 1, z0) * fx;
-    const b = i(x0, z0 + 1) * (1 - fx) + i(x0 + 1, z0 + 1) * fx;
-    return a * (1 - fz) + b * fz;
+    return this.cpuWaterY ? sampleGrid(this.cpuWaterY, this.simRes, WORLD_SIZE, x, z, -1e4) : -1e4;
   }
 
   private static async buildWaterY(
