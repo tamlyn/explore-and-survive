@@ -28,9 +28,11 @@ import { WORLD_SIZE } from '../world/WorldConst';
 import { ObstacleField } from '../game/Obstacles';
 import { buildingBlocks, type Ground, planRuins } from '../world/RuinPlan';
 import { buildRuins } from '../world/Ruins';
-import { clearingTexture, settlementClearings } from '../world/Clearing';
+import { clearingTexture, settlementClearings, trail } from '../world/Clearing';
 import { planProps } from '../world/PropPlan';
-import { type PropBox, Props } from '../world/Props';
+import { Props } from '../world/Props';
+import type { Box } from '../world/Box';
+import type { Surface } from '../game/Physics';
 import { obstacleTemplates } from '../game/ObstacleTemplates';
 import { PostStack } from '../render/PostStack';
 import { setupSunShadows } from '../render/ShadowSetup';
@@ -93,7 +95,12 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   // heightfield; the canopy map is their only knowledge of the forest) and
   // before tiles (under-crown ambient)
   ctx.progress(0.94, 'vegetation: scattering instances');
-  const clearing = ruinSites.length ? clearingTexture(settlementClearings(ruinSites, props)) : null;
+  // the first settlement is planned in view of the spawn: a trail keeps
+  // the trees from hiding it
+  const firstHouse = ruinSites[0]?.buildings[0];
+  const clearing = ruinSites.length
+    ? clearingTexture([...settlementClearings(ruinSites, props), ...(firstHouse ? trail(spawn, firstHouse) : [])])
+    : null;
   const scatter = await runScatter(engine.renderer, hf, seed, clearing);
   const canopyTex = await buildCanopyMap(engine.renderer, scatter.trees);
   engine.stats.counters['veg.trees'] = scatter.trees.count;
@@ -223,14 +230,20 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     }
   }
 
-  let propBoxes: PropBox[] = [];
+  // what the settlements put in the physics world — only what's drawn
+  let structures: (Box & { surface: Surface })[] = [];
   if (ruinBlocks.length && view !== 'split') {
     const ruinGi = ablate.has('gi') ? null : gi;
-    engine.scene.add(await buildRuins(ruinBlocks, ground, ruinGi, canopyTex));
-    const propField = await Props.load(props, ruinGi, canopyTex);
-    engine.scene.add(propField.group);
+    const [ruins, propField] = await Promise.all([
+      buildRuins(ruinBlocks, ground, ruinGi, canopyTex),
+      Props.load(props, ruinGi, canopyTex),
+    ]);
+    engine.scene.add(ruins, propField.group);
     engine.onUpdate(() => propField.update(engine.camera.position));
-    propBoxes = propField.colliders();
+    structures = [
+      ...ruinBlocks.flat().filter((b) => b.solid).map((b) => ({ ...b, surface: 'stone' as const })),
+      ...propField.colliders(),
+    ];
   }
 
   // volumetric clouds (noise bake + sun-shadow map)
@@ -307,10 +320,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
-      structures: [
-        ...ruinBlocks.flat().filter((b) => b.solid).map((b) => ({ ...b, surface: 'stone' as const })),
-        ...propBoxes,
-      ],
+      structures,
       ...(obstacles ? { obstacles } : {}),
     };
   }

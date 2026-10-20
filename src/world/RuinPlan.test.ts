@@ -117,6 +117,22 @@ describe('buildingBlocks', () => {
     expect(solidAt((door.j1 + 0.5) * cw, 200.5)).toBe(true);
   });
 
+  it('opens doorways at grade on a slope', () => {
+    // a diagonal slope at about the 1.8 m footprint limit
+    const slope: Ground = { height: (x, z) => 200 + (x + z) * 0.13, water: () => 0 };
+    for (let seed = 0; seed < 20; seed++) {
+      const b: Building = { ...house, yaw: 0.3, seed };
+      const door = doorway(b, slope);
+      if (!door) continue;
+      const solids = buildingBlocks(b, slope).filter((k) => k.solid);
+      const w = wallRuns(b)[door.wall]!;
+      const p = alongWall(b, w, ((door.j0 + door.j1) / 2) * (w.length / w.columns));
+      // anything above a 0.4 m step at the doorway would stop the player
+      const y = slope.height(p.x, p.z) + 0.4;
+      expect(solids.some((k) => contains(k, p.x, y, p.z))).toBe(false);
+    }
+  });
+
   it('drops loose rubble on the ground', () => {
     const tall = { ...house, storeys: 2, seed: 4 };
     const rubble = buildingBlocks(tall, flat).filter((b) => !b.solid);

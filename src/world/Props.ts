@@ -17,21 +17,12 @@ import tyreUrl from '../../assets/models/props/tyre.glb?url';
 import woodCrateUrl from '../../assets/models/props/wood_crate.glb?url';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import { lightWithProbes } from '../render/ProbeLighting';
+import type { Box } from './Box';
 import type { Prop, PropKind } from './PropPlan';
 
 export type PropSurface = 'metal' | 'wood' | 'rubber';
 
-/** an oriented collision box for one prop */
-export interface PropBox {
-  x: number;
-  y: number;
-  z: number;
-  hx: number;
-  hy: number;
-  hz: number;
-  q: [number, number, number, number];
-  surface: PropSurface;
-}
+export type PropBox = Box & { surface: PropSurface };
 
 const MODELS: Record<PropKind, { url: string; surface: PropSurface; range: number }> = {
   car: { url: carUrl, surface: 'metal', range: 450 },

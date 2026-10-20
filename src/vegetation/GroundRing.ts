@@ -73,6 +73,7 @@ import { grassTranslucency, rockMaterial } from '../render/VegMaterials';
 import { depthPrepassTwin } from '../render/VegPrepass';
 import { gustAt, windContext, windExposure, windU } from '../render/Wind';
 import type { NB, NF, NI, NU, NV2, NV3, NV4 } from '../gpu/TSLTypes';
+import { ALL_CLEARED } from '../world/Clearing';
 import type { Heightfield } from '../world/Heightfield';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import { WORLD_SIZE } from '../world/WorldConst';
@@ -405,6 +406,13 @@ export class GroundRing {
       return inside;
     };
 
+    // grass thins to scruff in settlement clearings; debris goes entirely,
+    // or it pokes up through the props
+    const clearing = this.clearing;
+    const cleared = (uvW: NV2): NB =>
+      (clearing ? (texture(clearing, uvW, 0) as unknown as NV4).x : float(0)).greaterThan(ALL_CLEARED) as unknown as NB;
+    const scruffInClearings = (uvW: NV2): NF => cleared(uvW).select(float(0.15), float(1));
+
     const appendRing = (g: NI, wc: NV2, y: NF): void => {
       const idx = atomicAdd(counters.element(g), uint(1)) as unknown as NU;
       If(idx.lessThan(capBuf.element(g) as unknown as NU), () => {
@@ -477,10 +485,7 @@ export class GroundRing {
       dens = dens
         .mul(float(1).sub(bio.y.mul(0.95)))
         .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)));
-      if (this.clearing) {
-        const clear = (texture(this.clearing, uvW, 0) as unknown as NV4).x;
-        dens = dens.mul(float(1).sub(clear.greaterThan(0.75).select(float(0.85), float(0))));
-      }
+      dens = dens.mul(scruffInClearings(uvW));
       // coverage-conserving continuous LOD ("cheap nanite for aggregates"):
       // accept thins SMOOTHLY with distance — survivors widen by 1/sqrt(thin)
       // in the vertex stage, so screen coverage stays constant and there are
@@ -546,7 +551,7 @@ export class GroundRing {
       // cobbles stay visible THROUGH shallow water (scene1: the trickle
       // runs over them) — only drop debris under genuinely deep water
       const submergedBy = hf.sampleWaterYNearest(wpos).sub(h);
-      If(submergedBy.greaterThan(0.55), () => {
+      If(submergedBy.greaterThan(0.55).or(cleared(uvW)), () => {
         Return();
       });
       const canopy = canopyAt(canopyTex, wpos);
@@ -649,7 +654,8 @@ export class GroundRing {
         .mul(float(1).sub(bio.w.mul(0.55)))
         .mul(float(1).sub(canopy.mul(0.45)))
         .mul(float(1).sub(bio.y.mul(0.95)))
-        .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)));
+        .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)))
+        .mul(scruffInClearings(uvW));
       // ramp IN over the fine band's dissolve, OUT at the splat handoff
       const fadeIn = smoothstep(FAR_R0 - 16, FAR_R0 + 14, dist);
       const edge = float(1).sub(smoothstep(FAR_R * 0.93, FAR_R, dist));

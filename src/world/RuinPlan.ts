@@ -6,7 +6,9 @@
  * rubble) that the renderer and the physics both consume.
  */
 
-import { Rng } from '../core/Seed';
+import { Quaternion, Vector3 } from 'three';
+import { hashCombine, hashString, Rng } from '../core/Seed';
+import type { Box } from './Box';
 import { TREELINE, WORLD_HALF } from './WorldConst';
 
 export interface Ground {
@@ -32,19 +34,14 @@ export interface RuinSite {
   buildings: Building[];
 }
 
-/** an oriented box */
-export interface Block {
-  x: number;
-  y: number;
-  z: number;
-  /** half extents */
-  hx: number;
-  hy: number;
-  hz: number;
-  /** rotation quaternion (x, y, z, w) */
-  q: [number, number, number, number];
+export interface Block extends Box {
   /** stops the player and bullets; loose rubble doesn't */
   solid: boolean;
+}
+
+/** a named stream of `seed`, independent of how many others are drawn */
+export function streamRng(seed: number, key: string): Rng {
+  return new Rng(hashCombine(seed, hashString(key)));
 }
 
 const SITE_CELL = 320;
@@ -108,17 +105,15 @@ function firstSite(ground: Ground, spawn: { x: number; z: number; yaw: number })
 function buildingFits(ground: Ground, b: Building): boolean {
   let lo = Infinity;
   let hi = -Infinity;
-  for (const [lx, lz] of [
-    [-1, -1],
-    [1, -1],
-    [1, 1],
-    [-1, 1],
-  ] as const) {
-    const p = toWorld(b, (lx * b.width) / 2, (lz * b.depth) / 2);
-    const h = ground.height(p.x, p.z);
-    if (ground.water(p.x, p.z) > h - 0.2) return false;
-    lo = Math.min(lo, h);
-    hi = Math.max(hi, h);
+  // a 4×4 grid, so a stream can't slip between the corners
+  for (let i = 0; i < 4; i++) {
+    for (let k = 0; k < 4; k++) {
+      const p = toWorld(b, (i / 3 - 0.5) * b.width, (k / 3 - 0.5) * b.depth);
+      const h = ground.height(p.x, p.z);
+      if (ground.water(p.x, p.z) > h - 0.2) return false;
+      lo = Math.min(lo, h);
+      hi = Math.max(hi, h);
+    }
   }
   return hi - lo <= BUILDING_RELIEF;
 }
@@ -152,17 +147,16 @@ function layoutSite(rng: Rng, ground: Ground, x: number, z: number): RuinSite {
  * the rest on a jittered grid wherever the ground suits.
  */
 export function planRuins(ground: Ground, seed: number, spawn: { x: number; z: number; yaw: number }): RuinSite[] {
-  const rng = new Rng(seed);
   const sites: RuinSite[] = [];
   const first = firstSite(ground, spawn);
   const add = (site: RuinSite): void => {
     if (site.buildings.length) sites.push(site);
   };
-  if (first) add(layoutSite(rng.fork('first'), ground, first.x, first.z));
+  if (first) add(layoutSite(streamRng(seed, 'first'), ground, first.x, first.z));
   const cells = Math.floor((2 * WORLD_HALF) / SITE_CELL);
   for (let cz = 0; cz < cells; cz++) {
     for (let cx = 0; cx < cells; cx++) {
-      const cell = rng.fork(`${cx},${cz}`);
+      const cell = streamRng(seed, `${cx},${cz}`);
       if (!cell.chance(SITE_CHANCE)) continue;
       // most of the map is steep, high or wet: look around the cell a little
       for (let k = 0; k < SITE_TRIES; k++) {
@@ -343,7 +337,15 @@ export function buildingBlocks(b: Building, ground: Ground): Block[] {
     const tops = damageProfile(rng, n, full);
 
     const openings: Opening[] = [];
-    if (door?.wall === wi) openings.push({ j0: door.j0, j1: door.j1, bottom: 0, top: 2.1 });
+    if (door?.wall === wi) {
+      // on a slope the ground at the door can sit below the floor: cut down
+      // to it, or the doorway keeps a sill too tall to step over
+      const sill = Math.min(...[door.j0, door.j1].map((j) => {
+        const p = alongWall(b, w, j * cw);
+        return ground.height(p.x, p.z);
+      }));
+      openings.push({ j0: door.j0, j1: door.j1, bottom: Math.min(0, sill - floor), top: 2.1 });
+    }
     for (let storey = 0; storey < b.storeys; storey++) {
       for (let j = 2 + rng.int(2); j + 2 < n; j += 3 + rng.int(3)) {
         const j1 = j + (rng.chance(0.5) ? 1 : 2);
@@ -413,19 +415,8 @@ function rubble(rng: Rng, x: number, z: number, ground: Ground): Block {
   const yaw = rng.float() * Math.PI * 2;
   const tip = rng.range(0, 0.45);
   const ta = rng.float() * Math.PI * 2;
-  const qy: Block['q'] = [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
-  const st = Math.sin(tip / 2);
-  const qt: Block['q'] = [Math.cos(ta) * st, 0, Math.sin(ta) * st, Math.cos(tip / 2)];
-  return { x, y: ground.height(x, z) + hy * 0.4, z, hx, hy, hz, q: mulQuat(qt, qy), solid: false };
-}
-
-function mulQuat(a: Block['q'], b: Block['q']): Block['q'] {
-  const [ax, ay, az, aw] = a;
-  const [bx, by, bz, bw] = b;
-  return [
-    aw * bx + ax * bw + ay * bz - az * by,
-    aw * by - ax * bz + ay * bw + az * bx,
-    aw * bz + ax * by - ay * bx + az * bw,
-    aw * bw - ax * bx - ay * by - az * bz,
-  ];
+  const q = new Quaternion()
+    .setFromAxisAngle(new Vector3(Math.cos(ta), 0, Math.sin(ta)), tip)
+    .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw));
+  return { x, y: ground.height(x, z) + hy * 0.4, z, hx, hy, hz, q: [q.x, q.y, q.z, q.w], solid: false };
 }

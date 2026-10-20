@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLEAR_ALL, CLEAR_TREES, clearingMask, settlementClearings } from './Clearing';
+import { CLEAR_ALL, CLEAR_TREES, clearingMask, settlementClearings, trail } from './Clearing';
 import type { Building } from './RuinPlan';
 import { WORLD_SIZE } from './WorldConst';
 
@@ -17,5 +17,13 @@ describe('clearingMask', () => {
     expect(at(100 + 20, -60)).toBe(0);
     expect(at(-300, 40)).toBe(CLEAR_ALL);
     expect(at(-300, 40 + 6)).toBe(0);
+  });
+
+  it('clears trees along a trail but leaves the ground', () => {
+    const res = 4096;
+    const mask = clearingMask(trail({ x: 0, z: 0 }, { x: 40, z: -30 }), res, WORLD_SIZE);
+    const at = (x: number, z: number): number => mask[Math.floor(z + res / 2) * res + Math.floor(x + res / 2)] as number;
+    for (const t of [0, 0.3, 0.77, 1]) expect(at(40 * t, -30 * t)).toBe(CLEAR_TREES);
+    expect(at(20, -5)).toBe(0);
   });
 });

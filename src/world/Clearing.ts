@@ -21,15 +21,31 @@ export interface Clearing {
 /** mask levels: the scatter reads them as ½ and 1 */
 export const CLEAR_TREES = 128;
 export const CLEAR_ALL = 255;
+/** thresholds on the sampled (0–1) mask for each level */
+export const TREES_CLEARED = 0.25;
+export const ALL_CLEARED = 0.75;
 
 /** 2 m texels: fine enough for a house footprint */
 const RES = 2048;
+/** a trail is a treeless strip this wide (m) */
+const TRAIL_WIDTH = 5;
 
 export function settlementClearings(sites: RuinSite[], props: Prop[]): Clearing[] {
   return [
     ...sites.flatMap((s) => s.buildings.map((b) => ({ x: b.x, z: b.z, radius: footprintRadius(b) + 0.5, margin: 8 }))),
     ...props.map((p) => ({ x: p.x, z: p.z, radius: PROP_RADIUS[p.kind] + 0.3, margin: 2 })),
   ];
+}
+
+/** a treeless strip from one point to another, as a chain of clearings */
+export function trail(from: { x: number; z: number }, to: { x: number; z: number }): Clearing[] {
+  const steps = Math.ceil(Math.hypot(to.x - from.x, to.z - from.z) / (TRAIL_WIDTH / 2));
+  return Array.from({ length: steps + 1 }, (_, k) => ({
+    x: from.x + ((to.x - from.x) * k) / steps,
+    z: from.z + ((to.z - from.z) * k) / steps,
+    radius: 0,
+    margin: TRAIL_WIDTH / 2,
+  }));
 }
 
 /** world-spanning mask, row-major by z like the heightfield */

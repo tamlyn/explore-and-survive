@@ -5,6 +5,7 @@
  */
 
 import RAPIER from '@dimforge/rapier3d-compat';
+import type { Box } from '../world/Box';
 
 export type Rapier = typeof RAPIER;
 
@@ -51,17 +52,6 @@ export function terrainColliderDesc(rapier: Rapier, grid: TerrainGrid): RAPIER.C
   }
   const span = ((res - 1) / res) * worldSize;
   return rapier.ColliderDesc.heightfield(res - 1, res - 1, colMajor, { x: span, y: 1, z: span });
-}
-
-/** an oriented box: centre, half extents and rotation quaternion (x, y, z, w) */
-export interface Box {
-  x: number;
-  y: number;
-  z: number;
-  hx: number;
-  hy: number;
-  hz: number;
-  q: [number, number, number, number];
 }
 
 export function boxColliderDesc(rapier: Rapier, b: Box): RAPIER.ColliderDesc {

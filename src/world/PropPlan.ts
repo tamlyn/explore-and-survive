@@ -6,8 +6,8 @@
  */
 
 import { Quaternion, Vector3 } from 'three';
-import { Rng } from '../core/Seed';
-import { alongWall, doorway, footprintRadius, type Ground, type RuinSite, WALL, wallRuns } from './RuinPlan';
+import type { Rng } from '../core/Seed';
+import { alongWall, doorway, footprintRadius, type Ground, type RuinSite, streamRng, WALL, wallRuns } from './RuinPlan';
 
 export type PropKind = 'car' | 'redBarrel' | 'blueBarrel' | 'jerrycan' | 'ammoCrates' | 'woodCrate' | 'tyre';
 
@@ -20,14 +20,14 @@ export interface Prop {
   q: [number, number, number, number];
 }
 
-/** footprint radius used for spacing (m) */
+/** footprint radius used for spacing: the model's half-diagonal (m) */
 export const PROP_RADIUS: Record<PropKind, number> = {
-  car: 2.3,
+  car: 2.4,
   redBarrel: 0.32,
   blueBarrel: 0.36,
   jerrycan: 0.2,
-  ammoCrates: 0.95,
-  woodCrate: 0.42,
+  ammoCrates: 1.05,
+  woodCrate: 0.47,
   tyre: 0.32,
 };
 
@@ -51,16 +51,17 @@ const DOOR_PATH_REACH = 2;
 const UP = new Vector3(0, 1, 0);
 
 /** stood on the ground: yawed, then tipped to the local slope */
-function settle(ground: Ground, x: number, z: number, yaw: number, reach: number, local?: Quaternion): Prop['q'] {
+function settle(ground: Ground, x: number, z: number, yaw: number, reach: number): Prop['q'] {
   const dx = (ground.height(x + reach, z) - ground.height(x - reach, z)) / (2 * reach);
   const dz = (ground.height(x, z + reach) - ground.height(x, z - reach)) / (2 * reach);
   const n = new Vector3(-dx, 1, -dz).normalize();
   const q = new Quaternion().setFromUnitVectors(UP, n).multiply(new Quaternion().setFromAxisAngle(UP, yaw));
-  if (local) q.multiply(local);
   return [q.x, q.y, q.z, q.w];
 }
 
-function segmentDistance(p: { x: number; z: number }, a: { x: number; z: number }, b: { x: number; z: number }): number {
+type Point = { x: number; z: number };
+
+function segmentDistance(p: Point, a: Point, b: Point): number {
   const ex = b.x - a.x;
   const ez = b.z - a.z;
   const t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.z - a.z) * ez) / (ex * ex + ez * ez)));
@@ -79,27 +80,34 @@ function pick(rng: Rng): PropKind {
 
 export function planProps(sites: RuinSite[], ground: Ground, seed: number): Prop[] {
   const props: Prop[] = [];
-  sites.forEach((site, si) => {
-    const rng = new Rng(seed).fork(String(si));
+  for (const site of sites) {
+    const rng = streamRng(seed, `${Math.round(site.x)},${Math.round(site.z)}`);
     const placed: Prop[] = [];
-    const free = (x: number, z: number, r: number): boolean =>
-      placed.every((p) => Math.hypot(p.x - x, p.z - z) > r + PROP_RADIUS[p.kind] + 0.05);
+    // every wall centreline and doorway corridor in the settlement: clutter
+    // set against one house mustn't land in the next one's wall or door
+    const walls: [Point, Point][] = [];
+    const paths: [Point, Point][] = [];
+    for (const b of site.buildings) {
+      for (const w of wallRuns(b)) walls.push([alongWall(b, w, 0), alongWall(b, w, w.length)]);
+      const door = doorway(b, ground);
+      if (!door) continue;
+      const dw = wallRuns(b)[door.wall]!;
+      const du = ((door.j0 + door.j1) / 2) * (dw.length / dw.columns);
+      paths.push([alongWall(b, dw, du, -DOOR_PATH_REACH), alongWall(b, dw, du, DOOR_PATH_REACH)]);
+    }
+    const free = (p: Point, r: number): boolean =>
+      placed.every((o) => Math.hypot(o.x - p.x, o.z - p.z) > r + PROP_RADIUS[o.kind] + 0.05) &&
+      walls.every(([a, b]) => segmentDistance(p, a, b) > r + WALL / 2) &&
+      paths.every(([a, b]) => segmentDistance(p, a, b) > r + DOOR_PATH_WIDTH / 2);
 
     for (const b of site.buildings) {
-      const walls = wallRuns(b);
-      const door = doorway(b, ground);
-      let path: [{ x: number; z: number }, { x: number; z: number }] | null = null;
-      if (door) {
-        const dw = walls[door.wall]!;
-        const du = ((door.j0 + door.j1) / 2) * (dw.length / dw.columns);
-        path = [alongWall(b, dw, du, -DOOR_PATH_REACH), alongWall(b, dw, du, DOOR_PATH_REACH)];
-      }
+      const runs = wallRuns(b);
       const want = 2 + rng.int(4);
       for (let tries = 0, n = 0; tries < want * 4 && n < want; tries++) {
         const kind = pick(rng);
         const r = PROP_RADIUS[kind];
         const wi = rng.int(4);
-        const w = walls[wi]!;
+        const w = runs[wi]!;
         const inside = rng.chance(0.5);
         // front and back runs include the corners, whose inner faces are the side walls
         const corner = inside && w.alongX ? WALL : 0;
@@ -109,12 +117,10 @@ export function planProps(sites: RuinSite[], ground: Ground, seed: number): Prop
         const u = rng.range(u0, u1);
         const out = (WALL / 2 + r + (inside ? rng.range(0.02, 0.25) : rng.range(0.05, 1.2))) * (inside ? -1 : 1);
         const p = alongWall(b, w, u, out);
-        if (!free(p.x, p.z, r)) continue;
-        if (path && segmentDistance(p, path[0], path[1]) < r + DOOR_PATH_WIDTH / 2) continue;
+        if (!free(p, r)) continue;
         // long side along the wall, give or take
         const yaw = b.yaw + (w.alongX ? 0 : Math.PI / 2) + (rng.chance(0.5) ? Math.PI : 0) + rng.gauss() * 0.25;
-        const flat = kind === 'tyre' && rng.chance(0.5) ? new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2) : undefined;
-        placed.push({ kind, x: p.x, y: ground.height(p.x, p.z) - 0.02, z: p.z, q: settle(ground, p.x, p.z, yaw, r, flat) });
+        placed.push({ kind, x: p.x, y: ground.height(p.x, p.z) - 0.02, z: p.z, q: settle(ground, p.x, p.z, yaw, r) });
         n++;
       }
     }
@@ -127,7 +133,7 @@ export function planProps(sites: RuinSite[], ground: Ground, seed: number): Prop
         const x = site.x + Math.cos(a) * d;
         const z = site.z + Math.sin(a) * d;
         if (site.buildings.some((b) => Math.hypot(b.x - x, b.z - z) < footprintRadius(b) + r + 0.5)) continue;
-        if (!free(x, z, r)) continue;
+        if (!free({ x, z }, r)) continue;
         const yaw = rng.float() * Math.PI * 2;
         const hs = [0, 1, 2, 3].map((k) => {
           const ca = yaw + (k * Math.PI) / 2;
@@ -140,6 +146,6 @@ export function planProps(sites: RuinSite[], ground: Ground, seed: number): Prop
       }
     }
     props.push(...placed);
-  });
+  }
   return props;
 }
