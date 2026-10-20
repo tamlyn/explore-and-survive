@@ -105,10 +105,10 @@ export class Viewmodel {
     // size and put the grip at the origin (a third of the way up from the butt)
     const box = new Box3().setFromObject(model);
     const size = box.getSize(new Vector3());
-    const centre = box.getCenter(new Vector3());
+    const center = box.getCenter(new Vector3());
     const s = GUN_LENGTH / size.x;
     model.scale.setScalar(s);
-    model.position.set(-centre.x * s, -(box.min.y + size.y * 0.35) * s, -centre.z * s);
+    model.position.set(-center.x * s, -(box.min.y + size.y * 0.35) * s, -center.z * s);
     model.updateMatrixWorld(true);
     model.traverse((o) => {
       o.castShadow = false;
@@ -118,6 +118,16 @@ export class Viewmodel {
     gun.rotation.y = Math.PI / 2; // +x → −z (forward)
     gun.add(model, this.flash);
     this.holder.add(gun);
+  }
+
+  /** settle all motion — on (re-)entering play, when the aim may have jumped */
+  reset(): void {
+    this.lastYaw = null;
+    this.kick = 0;
+    this.kickV = 0;
+    this.swayX = 0;
+    this.swayY = 0;
+    this.flashLeft = 0;
   }
 
   fire(): void {
@@ -133,7 +143,10 @@ export class Viewmodel {
     this.syncWorld();
 
     // look sway: the gun lags the aim a little, then catches up
-    if (this.lastYaw === null) this.lastYaw = p.yaw;
+    if (this.lastYaw === null) {
+      this.lastYaw = p.yaw;
+      this.lastPitch = p.pitch;
+    }
     const dYaw = p.yaw - this.lastYaw;
     const dPitch = p.pitch - this.lastPitch;
     this.lastYaw = p.yaw;

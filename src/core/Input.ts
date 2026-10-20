@@ -94,15 +94,11 @@ export class Input {
       this.lookX += e.movementX;
       this.lookY += e.movementY;
     });
-    // mouse buttons read like keys ('Mouse0' = left), and only while locked:
-    // the click that takes the lock must not also fire
+    // mouse buttons are presses like keys ('Mouse0' = left), and only while
+    // locked: the click that takes the lock must not also fire
     dom.addEventListener('mousedown', (e) => {
-      if (!this.locked) return;
-      const code = `Mouse${e.button}`;
-      this.presses.add(code);
-      this.keys.add(code);
+      if (this.locked) this.presses.add(`Mouse${e.button}`);
     });
-    window.addEventListener('mouseup', (e) => this.keys.delete(`Mouse${e.button}`));
     window.addEventListener('keydown', (e) => {
       if (!e.repeat) this.presses.add(e.code);
       this.keys.add(e.code);

@@ -50,6 +50,7 @@ interface Attached {
   rig: FirstPersonRig;
   obstacles: ObstacleStreamer | null;
   gunplay: Gunplay;
+  impacts: Impacts;
 }
 
 export class Game {
@@ -83,19 +84,16 @@ export class Game {
     const obstacles = world.obstacles
       ? new ObstacleStreamer(physics, world.obstacles)
       : null;
-    await this.viewmodel.load();
+    // the gun is cosmetic: without its model, play still works
+    await this.viewmodel.load().catch((e: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[laas] viewmodel failed to load', e);
+    });
     this.viewmodel.lights = world.lights ?? null;
+    const impacts = new Impacts(this.scene);
     const gunplay = new Gunplay(
-      {
-        weapon: new Weapon(PISTOL),
-        viewmodel: this.viewmodel,
-        impacts: new Impacts(this.scene),
-        sfx: new Sfx(),
-        hud: new GameHud(),
-      },
-      physics,
-      world.waterAt,
-      motor.collider,
+      { weapon: new Weapon(PISTOL), viewmodel: this.viewmodel, impacts, sfx: new Sfx(), hud: new GameHud() },
+      { physics, obstacles: world.obstacles, waterAt: world.waterAt, shooter: motor.collider },
     );
     this.attached = {
       world,
@@ -105,6 +103,7 @@ export class Game {
       rig: new FirstPersonRig(this.camera),
       obstacles,
       gunplay,
+      impacts,
     };
   }
 
@@ -128,13 +127,16 @@ export class Game {
     if (this.modeV === 'play' && a) {
       a.obstacles?.update(a.player.eye.x, a.player.eye.z);
       a.player.update(dt, input);
+      a.gunplay.update(dt, input, a.player);
       a.rig.update(dt, a.player);
       const trunks = a.world.obstacles?.trunksNear(a.player.eye.x, a.player.eye.z, CANOPY_R) ?? 0;
       this.viewmodel.canopy = Math.min(1, trunks / CANOPY_TRUNKS);
-      a.gunplay.update(dt, input, a.player);
+      a.gunplay.updateView(dt, a.player);
     } else {
       this.fly.update(dt, input);
     }
+    // puffs are part of the world: they finish fading whoever has the camera
+    a?.impacts.update(dt);
     input.endFrame();
   }
 
@@ -159,6 +161,7 @@ export class Game {
     a.rig.baseFov = this.fly.baseFov;
     a.rig.reset();
     a.rig.update(0, a.player);
+    this.viewmodel.reset();
     this.modeV = 'play';
     a.gunplay.active = true;
     // eslint-disable-next-line no-console

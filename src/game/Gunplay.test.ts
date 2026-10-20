@@ -49,7 +49,7 @@ function setup(): { gunplay: Gunplay; player: Player; impacts: Impact[]; parts: 
     sfx: { shot: vi.fn(), click: vi.fn() },
     hud: { update: vi.fn(), visible: false },
   } as unknown as GunplayParts;
-  const gunplay = new Gunplay(parts, p, null, motor.collider);
+  const gunplay = new Gunplay(parts, { physics: p, shooter: motor.collider });
   return { gunplay, player, impacts, parts, input: new Clicks() };
 }
 

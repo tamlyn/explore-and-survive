@@ -1,10 +1,13 @@
 /**
- * Hitscan: where a shot fired along a ray lands. Water has no collider (the
- * player wades on a floor, not a body), so a hit below the water line is
- * moved up to where the ray crossed the surface.
+ * Hitscan: where a shot fired along a ray lands. Nearby colliders come from
+ * the physics world; obstacles beyond the stream radius are tested straight
+ * from the obstacle field. Water has no collider (the player wades on a
+ * floor, not a body), so a hit below the water line is moved up to where the
+ * ray crossed the surface.
  */
 
 import type RAPIER from '@dimforge/rapier3d-compat';
+import type { ObstacleField } from './Obstacles';
 import type { Physics, Surface } from './Physics';
 import type { Vec3 } from './PlayerMotor';
 
@@ -18,18 +21,25 @@ export interface Impact {
   surface: ImpactSurface;
 }
 
-export function traceShot(
-  physics: Physics,
-  origin: Vec3,
-  dir: Vec3,
-  range: number,
-  waterAt: ((x: number, z: number) => number) | null,
-  exclude?: RAPIER.Collider,
-): Impact | null {
-  const hit = physics.castRay(origin, dir, range, exclude);
+export interface ShotWorld {
+  physics: Physics;
+  obstacles?: ObstacleField | undefined;
+  waterAt?: ((x: number, z: number) => number) | undefined;
+  /** the shooter's own collider, which the ray starts inside */
+  shooter?: RAPIER.Collider | undefined;
+}
+
+export function traceShot(world: ShotWorld, origin: Vec3, dir: Vec3, range: number): Impact | null {
+  const near = world.physics.castRay(origin, dir, range, world.shooter);
+  const far = world.obstacles?.castRay(world.physics.rapier, origin, dir, near?.distance ?? range) ?? null;
+  const hit = far ?? near;
   if (!hit) return null;
-  const water = waterAt ? waterAt(hit.x, hit.z) : -Infinity;
-  if (hit.y < water && dir.y < 0) {
+  const distance = hit.distance;
+  const x = origin.x + dir.x * distance;
+  const y = origin.y + dir.y * distance;
+  const z = origin.z + dir.z * distance;
+  const water = world.waterAt ? world.waterAt(x, z) : -Infinity;
+  if (y < water && dir.y < 0) {
     const t = Math.max(0, (water - origin.y) / dir.y);
     return {
       x: origin.x + dir.x * t,
@@ -39,5 +49,5 @@ export function traceShot(
       surface: 'water',
     };
   }
-  return { x: hit.x, y: hit.y, z: hit.z, normal: hit.normal, surface: hit.surface ?? 'stone' };
+  return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone' };
 }

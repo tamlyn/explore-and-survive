@@ -23,10 +23,25 @@ describe('Weapon', () => {
   it('fires once per press, no faster than the fire interval', () => {
     const w = new Weapon(SPEC);
     expect(w.update(1 / 60, true, false)).toBe('fire');
-    expect(w.update(1 / 60, true, false)).toBeNull();
+    expect(w.update(1 / 60, false, false)).toBeNull();
     run(w, 0.1);
     expect(w.update(1 / 60, true, false)).toBe('fire');
     expect(w.ammo).toBe(1);
+  });
+
+  it('holds a press made just before the gun is ready', () => {
+    const w = new Weapon(SPEC);
+    w.update(1 / 60, true, false);
+    expect(w.update(0.05, true, false)).toBeNull();
+    expect(run(w, 0.06)).toEqual(['fire']);
+    expect(w.ammo).toBe(1);
+    // but not forever
+    w.update(0.01, true, false);
+    expect(run(w, 0.3)).toEqual(['fire']);
+    const late = new Weapon({ ...SPEC, fireInterval: 1 });
+    late.update(1 / 60, true, false);
+    late.update(0.1, true, false);
+    expect(run(late, 1)).toEqual([]);
   });
 
   it('dry-fires on an empty magazine and reloads', () => {

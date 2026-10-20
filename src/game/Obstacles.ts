@@ -58,11 +58,31 @@ interface Entry {
   template: ObstacleTemplate;
 }
 
+export interface ObstacleHit {
+  distance: number;
+  normal: { x: number; y: number; z: number };
+  surface: Surface;
+}
+
+/** horizontal reach of a template from its base at scale 1, generous
+ *  enough to cover lean */
+function reach(t: ObstacleTemplate): number {
+  if (t.kind === 'trunk') return t.radius + t.height * 0.1;
+  let r = 0;
+  let h = 0;
+  for (let k = 0; k < t.points.length; k += 3) {
+    r = Math.max(r, Math.hypot(t.points[k] as number, t.points[k + 2] as number));
+    h = Math.max(h, t.points[k + 1] as number);
+  }
+  return r + h * 0.1;
+}
+
 /** spatial index over every instance that has a collision template */
 export class ObstacleField {
   readonly size: number;
   private readonly entries: Entry[] = [];
   private readonly cells = new Map<number, number[]>();
+  private readonly reaches = new Map<ObstacleTemplate, number>();
 
   constructor(
     sources: InstanceArrays[],
@@ -75,6 +95,7 @@ export class ObstacleField {
         if (!template) continue;
         const id = this.entries.length;
         this.entries.push({ src, i, template });
+        if (!this.reaches.has(template)) this.reaches.set(template, reach(template));
         const key = this.cellKey(
           Math.floor((src.A[i * 4] as number) / cellSize),
           Math.floor((src.A[i * 4 + 2] as number) / cellSize),
@@ -128,6 +149,55 @@ export class ObstacleField {
     return template.kind === 'trunk' ? 'wood' : template.surface;
   }
 
+  /**
+   * First obstacle along a ray (`dir` unit length), searched over the whole
+   * field rather than just the streamed colliders, so long shots meet the
+   * trees beyond the stream radius. Shapes are built only for obstacles
+   * whose reach the ray's ground track passes through.
+   */
+  castRay(
+    rapier: Rapier,
+    origin: { x: number; y: number; z: number },
+    dir: { x: number; y: number; z: number },
+    maxDistance: number,
+  ): ObstacleHit | null {
+    const flat = Math.hypot(dir.x, dir.z) * maxDistance;
+    const cellsSeen = new Set<number>();
+    const steps = Math.ceil(flat / (this.cellSize / 2));
+    for (let k = 0; k <= steps; k++) {
+      const t = steps === 0 ? 0 : (k / steps) * maxDistance;
+      const cx = Math.floor((origin.x + dir.x * t) / this.cellSize);
+      const cz = Math.floor((origin.z + dir.z * t) / this.cellSize);
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) cellsSeen.add(this.cellKey(cx + dx, cz + dz));
+      }
+    }
+    const ray = new rapier.Ray(origin, dir);
+    let best: ObstacleHit | null = null;
+    let limit = maxDistance;
+    for (const key of cellsSeen) {
+      for (const id of this.cells.get(key) ?? []) {
+        const { src, i, template } = this.entries[id] as Entry;
+        const bx = (src.A[i * 4] as number) - origin.x;
+        const bz = (src.A[i * 4 + 2] as number) - origin.z;
+        const r = (this.reaches.get(template) as number) * (src.A[i * 4 + 3] as number);
+        if (segmentDistanceSq(bx, bz, dir.x * limit, dir.z * limit) > r * r) continue;
+        const desc = this.colliderDesc(rapier, id);
+        if (!desc) continue;
+        const hit = desc.shape.castRayAndGetNormal(ray, desc.translation, desc.rotation, limit, true);
+        if (hit && hit.timeOfImpact < limit) {
+          limit = hit.timeOfImpact;
+          best = {
+            distance: hit.timeOfImpact,
+            normal: { x: hit.normal.x, y: hit.normal.y, z: hit.normal.z },
+            surface: this.surface(id),
+          };
+        }
+      }
+    }
+    return best;
+  }
+
   /** world-space collider description for obstacle `id` */
   colliderDesc(rapier: Rapier, id: number): RAPIER.ColliderDesc | null {
     const { src, i, template } = this.entries[id] as Entry;
@@ -156,6 +226,15 @@ export class ObstacleField {
   private cellKey(cx: number, cz: number): number {
     return (cx + 32768) * 65536 + (cz + 32768);
   }
+}
+
+/** squared distance from point (px, pz) to the segment (0, 0)–(ex, ez) */
+function segmentDistanceSq(px: number, pz: number, ex: number, ez: number): number {
+  const len2 = ex * ex + ez * ez;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, (px * ex + pz * ez) / len2)) : 0;
+  const dx = px - ex * t;
+  const dz = pz - ez * t;
+  return dx * dx + dz * dz;
 }
 
 /** keeps colliders alive for obstacles within `radius` of the focus point */

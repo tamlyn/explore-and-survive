@@ -27,6 +27,9 @@ export const PISTOL: WeaponSpec = {
   recoil: 0.016,
 };
 
+/** a trigger press this close before the gun is ready still fires */
+const TRIGGER_BUFFER = 0.15;
+
 /** fire: a round left the barrel; dry: trigger on an empty magazine (a
  *  reload starts with it); reload / reloaded: start and end of a reload */
 export type WeaponEvent = 'fire' | 'dry' | 'reload' | 'reloaded';
@@ -35,6 +38,7 @@ export class Weapon {
   ammo: number;
   private cooldown = 0;
   private reloadLeft = 0;
+  private pending = 0;
 
   constructor(readonly spec: WeaponSpec) {
     this.ammo = spec.magazine;
@@ -52,14 +56,17 @@ export class Weapon {
   /** `trigger` is a fresh press (semi-automatic), `reload` the reload key */
   update(dt: number, trigger: boolean, reload: boolean): WeaponEvent | null {
     this.cooldown = Math.max(0, this.cooldown - dt);
+    this.pending = trigger ? TRIGGER_BUFFER : Math.max(0, this.pending - dt);
     if (this.reloading) {
+      this.pending = 0;
       this.reloadLeft -= dt;
       if (this.reloadLeft > 0) return null;
       this.reloadLeft = 0;
       this.ammo = this.spec.magazine;
       return 'reloaded';
     }
-    if (trigger && this.cooldown === 0) {
+    if (this.pending > 0 && this.cooldown === 0) {
+      this.pending = 0;
       if (this.ammo === 0) {
         this.reloadLeft = this.spec.reloadTime;
         return 'dry';

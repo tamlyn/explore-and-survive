@@ -6,6 +6,7 @@
 
 export class Sfx {
   private ctx: AudioContext | null = null;
+  private out: GainNode | null = null;
   private noise: AudioBuffer | null = null;
 
   shot(): void {
@@ -18,14 +19,14 @@ export class Sfx {
     lp.frequency.setValueAtTime(7000, t);
     lp.frequency.exponentialRampToValueAtTime(500, t + 0.25);
     const crackGain = envelope(ctx, t, 0.9, 0.35);
-    crack.connect(lp).connect(crackGain).connect(ctx.destination);
+    crack.connect(lp).connect(crackGain).connect(this.output());
     crack.start(t, Math.random() * 0.5); // vary the grain shot to shot
     crack.stop(t + 0.4);
     // thump: a falling sine for body
     const thump = ctx.createOscillator();
     thump.frequency.setValueAtTime(140, t);
     thump.frequency.exponentialRampToValueAtTime(40, t + 0.15);
-    thump.connect(envelope(ctx, t, 0.8, 0.18)).connect(ctx.destination);
+    thump.connect(envelope(ctx, t, 0.8, 0.18)).connect(this.output());
     thump.start(t);
     thump.stop(t + 0.2);
   }
@@ -39,9 +40,20 @@ export class Sfx {
     hp.type = 'bandpass';
     hp.frequency.value = 3200;
     hp.Q.value = 2;
-    src.connect(hp).connect(envelope(ctx, t, 0.5, 0.03)).connect(ctx.destination);
+    src.connect(hp).connect(envelope(ctx, t, 0.5, 0.03)).connect(this.output());
     src.start(t, Math.random() * 0.5);
     src.stop(t + 0.05);
+  }
+
+  /** crack and thump overlap at their peaks; headroom so they don't clip */
+  private output(): GainNode {
+    if (!this.out) {
+      const ctx = this.context();
+      this.out = ctx.createGain();
+      this.out.gain.value = 0.55;
+      this.out.connect(ctx.destination);
+    }
+    return this.out;
   }
 
   private context(): AudioContext {

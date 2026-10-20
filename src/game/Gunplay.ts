@@ -6,14 +6,12 @@
  * with a different viewmodel.
  */
 
-import type RAPIER from '@dimforge/rapier3d-compat';
 import { aimDirection } from '../core/CameraAim';
 import type { GameHud } from './GameHud';
 import type { Impacts } from './Impacts';
-import type { Physics } from './Physics';
 import { WALK_SPEED, type Player, type PlayerInput } from './Player';
 import type { Sfx } from './Sfx';
-import { traceShot } from './Shot';
+import { traceShot, type ShotWorld } from './Shot';
 import type { Viewmodel } from './Viewmodel';
 import { spreadDirection, type Weapon } from './Weapon';
 
@@ -31,10 +29,7 @@ export interface GunplayParts {
 export class Gunplay {
   constructor(
     private readonly parts: GunplayParts,
-    private readonly physics: Physics,
-    private readonly waterAt: ((x: number, z: number) => number) | null,
-    /** the shooter's own collider, which the ray starts inside */
-    private readonly shooter: RAPIER.Collider,
+    private readonly world: ShotWorld,
   ) {}
 
   set active(on: boolean) {
@@ -42,8 +37,9 @@ export class Gunplay {
     this.parts.hud.visible = on;
   }
 
+  /** before the camera rig, so recoil shows in this frame's view */
   update(dt: number, input: PlayerInput, player: Player): void {
-    const { weapon, viewmodel, impacts, sfx, hud } = this.parts;
+    const { weapon, viewmodel, sfx, hud } = this.parts;
     const event = weapon.update(dt, input.takePress('Mouse0'), input.takePress('KeyR'));
     if (event === 'fire') {
       this.fire(player);
@@ -55,9 +51,12 @@ export class Gunplay {
       sfx.click();
       sfx.click(0.08);
     }
-    viewmodel.update(dt, player, weapon.reloadProgress);
-    impacts.update(dt);
     hud.update(weapon);
+  }
+
+  /** after the camera rig: the viewmodel follows the posed camera */
+  updateView(dt: number, player: Player): void {
+    this.parts.viewmodel.update(dt, player, this.parts.weapon.reloadProgress);
   }
 
   private fire(player: Player): void {
@@ -65,7 +64,7 @@ export class Gunplay {
     const moving = Math.min(player.speed / WALK_SPEED, 1);
     const spread = spec.spread * (1 + (MOVING_SPREAD - 1) * moving);
     const dir = spreadDirection(aimDirection(player.yaw, player.pitch), spread, Math.random(), Math.random());
-    const hit = traceShot(this.physics, player.eye, dir, spec.range, this.waterAt, this.shooter);
+    const hit = traceShot(this.world, player.eye, dir, spec.range);
     if (hit) this.parts.impacts.spawn(hit);
     player.addAim(0, spec.recoil * (0.8 + Math.random() * 0.4));
   }
