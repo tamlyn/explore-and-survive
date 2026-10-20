@@ -24,6 +24,7 @@ import { Heightfield } from '../world/Heightfield';
 import { buildTerrainShadowProxy } from '../world/ShadowProxy';
 import { TerrainTiles } from '../world/TerrainTiles';
 import { WaterSurface } from '../world/WaterSurface';
+import { WORLD_SIZE } from '../world/WorldConst';
 import { PostStack } from '../render/PostStack';
 import { setupSunShadows } from '../render/ShadowSetup';
 import { Clouds } from '../sky/Clouds';
@@ -260,6 +261,12 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     ground: hf.heightAtCpu(x, z),
     water: hf.waterYAtCpu(x, z),
   });
+  if (hf.cpuHeights) {
+    ctx.gameWorld = {
+      terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
+      waterAt: (x, z) => hf.waterYAtCpu(x, z),
+    };
+  }
 
   // camera spawn: ground-clamped (?alt/x/z → fly) or the DEFAULT WALK SPAWN
   // at the map center — first dry, reasonably flat spot on a spiral out

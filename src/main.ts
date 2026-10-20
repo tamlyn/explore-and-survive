@@ -9,7 +9,6 @@ import {
   probeWebGPU,
 } from './core/Diagnostics';
 import { Engine } from './core/Engine';
-import { FlyCamera } from './core/FlyCamera';
 import { initHooks } from './core/Hooks';
 import { parseCamString, parseParams } from './core/Params';
 import { WorldSeed } from './core/Seed';
@@ -19,6 +18,7 @@ import { buildSanityScene } from './debug/SanityScene';
 import { buildShadowTestScene } from './debug/ShadowTestScene';
 import { buildTerrainScene } from './debug/TerrainScene';
 import { buildScene, registerScene, type WorldContext } from './debug/Scenes';
+import { Game } from './game/Game';
 
 async function boot(): Promise<void> {
   const hooks = initHooks();
@@ -49,12 +49,12 @@ async function boot(): Promise<void> {
   bootUI.set(0.08, 'creating renderer');
   const engine = await Engine.create(params, hooks);
 
-  // FlyCamera's update MUST register before any scene system: updateFns run
+  // the camera mover MUST register before any scene system: updateFns run
   // in registration order, and subsystems copy camera state in their own
   // updates — the mover has to run first or every copy is one frame stale
   // during interactive motion (clouds/aerial visibly lagged the camera).
-  const fly = new FlyCamera(engine.camera, engine.renderer.domElement);
-  engine.onUpdate((dt) => fly.update(dt));
+  const game = new Game(engine.camera, engine.renderer.domElement);
+  engine.onUpdate((dt) => game.update(dt));
 
   const seed = new WorldSeed(params.seed);
   registerScene('sanity', buildSanityScene);
@@ -73,28 +73,32 @@ async function boot(): Promise<void> {
   };
   await buildScene(params.scene, ctx);
 
-  // terrain probe first — walk mode + fly soft-collision depend on it
-  if (hooks.groundProbe) fly.groundProbe = hooks.groundProbe;
+  if (hooks.groundProbe) game.fly.groundProbe = hooks.groundProbe;
+  if (ctx.gameWorld) {
+    bootUI.set(0.96, 'physics: building colliders');
+    const t0 = performance.now();
+    await game.attachWorld(ctx.gameWorld);
+    // eslint-disable-next-line no-console
+    console.log(`[laas] physics ready in ${(performance.now() - t0).toFixed(0)} ms`);
+  }
   if (params.cam !== null) {
     const pose = parseCamString(params.cam);
-    if (pose) fly.setPose(pose); // explicit pose ⇒ fly semantics
+    if (pose) game.setPose(pose); // explicit pose ⇒ fly semantics
   } else if (hooks.initialPose) {
-    fly.setPose(hooks.initialPose);
-    // grounded RPG exploration is the interactive default (V toggles fly);
-    // ?walk=0 keeps tooling/legacy behavior
+    game.setPose(hooks.initialPose);
+    // playing is the interactive default (V toggles fly); ?walk=0 keeps
+    // tooling/legacy behavior
     const q = new URLSearchParams(window.location.search);
-    if (hooks.initialPoseMode === 'walk' && q.get('walk') !== '0') {
-      fly.setMode('walk');
-    }
+    if (hooks.initialPoseMode === 'walk' && q.get('walk') !== '0') game.play();
   }
 
   new Hud(engine, params);
 
-  hooks.setPose = (p) => fly.setPose(p);
-  hooks.getPose = () => fly.getPose();
+  hooks.setPose = (p) => game.setPose(p);
+  hooks.getPose = () => game.getPose();
   hooks.settle = (frames?: number) => engine.settle(frames ?? 8);
   hooks.flyCamEnabled = (on) => {
-    fly.enabled = on;
+    game.input.enabled = on;
   };
 
   engine.start();
