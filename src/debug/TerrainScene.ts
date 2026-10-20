@@ -11,7 +11,7 @@ import { BOOKMARKS, installBookmarks } from './Bookmarks';
 import { Froxels } from '../gpu/passes/Froxels';
 import { PARTICLE_COUNT, Particles } from '../gpu/passes/Particles';
 import { ProbeGI } from '../gpu/passes/ProbeGI';
-import { buildCanopyMap, runScatter } from '../gpu/passes/Scatter';
+import { buildCanopyMap, readScatterLayer, runScatter } from '../gpu/passes/Scatter';
 import { addScatterDebug } from './ScatterDebug';
 import { Forests } from '../vegetation/Forests';
 import { GroundRing } from '../vegetation/GroundRing';
@@ -25,6 +25,8 @@ import { buildTerrainShadowProxy } from '../world/ShadowProxy';
 import { TerrainTiles } from '../world/TerrainTiles';
 import { WaterSurface } from '../world/WaterSurface';
 import { WORLD_SIZE } from '../world/WorldConst';
+import { ObstacleField } from '../game/Obstacles';
+import { obstacleTemplates } from '../game/ObstacleTemplates';
 import { PostStack } from '../render/PostStack';
 import { setupSunShadows } from '../render/ShadowSetup';
 import { Clouds } from '../sky/Clouds';
@@ -156,6 +158,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
 
   // Phase 5: variant pools + GPU cull → compacted indirect draws
   let forestsRef: Forests | null = null;
+  let obstacles: ObstacleField | undefined;
   if (view !== 'scatter' && !ablate.has('veg')) {
     const lib = await buildVegLibrary(engine.renderer, seed, (p, m) =>
       ctx.progress(0.963 + p * 0.006, m),
@@ -169,6 +172,12 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     );
     forests.init(engine.renderer);
     forestsRef = forests;
+    obstacles = new ObstacleField(
+      await Promise.all(
+        [scatter.trees, scatter.extras, scatter.stones].map((l) => readScatterLayer(engine.renderer, l)),
+      ),
+      obstacleTemplates(lib),
+    );
     engine.scene.add(forests.group);
     updateSunUniforms(sunSky.sun);
     engine.onUpdate(() => {
@@ -265,6 +274,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     ctx.gameWorld = {
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
+      ...(obstacles ? { obstacles } : {}),
     };
   }
 

@@ -14,6 +14,7 @@ import type { CamPose } from '../core/Hooks';
 import { Input } from '../core/Input';
 import { sampleGrid } from '../world/GridSample';
 import { FirstPersonRig } from './FirstPersonRig';
+import { ObstacleStreamer, type ObstacleField } from './Obstacles';
 import { loadRapier, Physics, type TerrainGrid } from './Physics';
 import { Player } from './Player';
 import { EYE_HEIGHT, PlayerMotor, WADE_CLEAR } from './PlayerMotor';
@@ -22,6 +23,8 @@ import { EYE_HEIGHT, PlayerMotor, WADE_CLEAR } from './PlayerMotor';
 export interface GameWorld {
   terrain: TerrainGrid;
   waterAt: (x: number, z: number) => number;
+  /** trunks, rocks, logs… — absent in scenes without vegetation */
+  obstacles?: ObstacleField;
 }
 
 export type ControlMode = 'play' | 'fly';
@@ -31,6 +34,7 @@ interface Attached {
   physics: Physics;
   player: Player;
   rig: FirstPersonRig;
+  obstacles: ObstacleStreamer | null;
 }
 
 export class Game {
@@ -53,7 +57,10 @@ export class Game {
     const physics = new Physics(rapier, world.terrain);
     const motor = new PlayerMotor(rapier, physics.world, world.waterAt);
     const player = new Player(motor, () => physics.step());
-    this.attached = { world, physics, player, rig: new FirstPersonRig(this.camera) };
+    const obstacles = world.obstacles
+      ? new ObstacleStreamer(rapier, physics.world, world.obstacles)
+      : null;
+    this.attached = { world, physics, player, rig: new FirstPersonRig(this.camera), obstacles };
   }
 
   update(dt: number): void {
@@ -74,6 +81,7 @@ export class Game {
 
     const a = this.attached;
     if (this.modeV === 'play' && a) {
+      a.obstacles?.update(a.player.eye.x, a.player.eye.z);
       a.player.update(dt, input);
       a.rig.update(dt, a.player);
     } else {
@@ -94,6 +102,8 @@ export class Game {
     const { heights, res, worldSize } = a.world.terrain;
     const ground = sampleGrid(heights, res, worldSize, x, z);
     const feetY = Math.max(ground, a.world.waterAt(x, z) + WADE_CLEAR - EYE_HEIGHT);
+    a.obstacles?.update(x, z);
+    a.physics.step(); // new colliders reach queries only after a step
     a.player.spawn(x, feetY + 0.02, z, this.fly.yaw, this.fly.pitch);
     a.rig.baseFov = this.fly.baseFov;
     a.rig.reset();

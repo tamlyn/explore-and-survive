@@ -343,3 +343,19 @@ export function growSkeleton(
     crownRadius: maxR,
   };
 }
+
+/** trunk radius at height `y` (m above the root), interpolated along the
+ *  level-0 branch; 0 when the tree has no trunk reaching that height */
+export function trunkRadiusAt(skel: Skeleton, y: number): number {
+  const trunk = skel.branches.find((b) => b.level === 0);
+  if (!trunk) return 0;
+  for (let i = 1; i < trunk.pts.length; i++) {
+    const a = trunk.pts[i - 1] as Vector3;
+    const b = trunk.pts[i] as Vector3;
+    if (b.y >= y) {
+      const t = b.y > a.y ? Math.max(0, (y - a.y) / (b.y - a.y)) : 0;
+      return (trunk.radii[i - 1] as number) * (1 - t) + (trunk.radii[i] as number) * t;
+    }
+  }
+  return 0;
+}

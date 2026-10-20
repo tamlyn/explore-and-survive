@@ -12,7 +12,8 @@
     "test": "vitest run",
     "shoot": "tsx tools/shoot.ts",
     "compare": "tsx tools/compare.ts",
-    "bench": "tsx tools/bench.ts"
+    "bench": "tsx tools/bench.ts",
+    "smoke": "tsx tools/smoke.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",

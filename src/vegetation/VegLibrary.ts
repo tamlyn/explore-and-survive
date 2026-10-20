@@ -29,6 +29,7 @@ import { twigGeometry } from './GroundCover';
 import { captureImpostor, type ImpostorAtlas, type ImpostorPart } from './Impostors';
 import { buildRock } from './RockBuilder';
 import { TREE_SPECIES } from './Species';
+import { trunkRadiusAt } from './Skeleton';
 import { buildTree } from './TreeBuilder';
 import {
   buildFern,
@@ -54,6 +55,8 @@ export interface VegPool {
   r2: PoolPart[] | null;
   trisR1: number;
   trisR2: number;
+  /** trees only: trunk radius at chest height (m, scale 1) — collision */
+  trunkRadius?: number;
   /** cull-sphere data (from geometry bounds, conservative over parts) */
   height: number;
   radius: number;
@@ -176,6 +179,7 @@ export async function buildVegLibrary(
         r2,
         trisR1: t1.stats.tris,
         trisR2: t2.stats.tris,
+        trunkRadius: trunkRadiusAt(t1.skeleton, 1.2) || trunkRadiusAt(t1.skeleton, 0.3),
         height: b.height,
         radius: b.radius,
       });

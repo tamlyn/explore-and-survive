@@ -356,6 +356,19 @@ export async function buildCanopyMap(
 }
 
 /** sample the canopy coverage field at a world xz (filtered) */
+/** one-off CPU copy of a layer's accepted instances (A, B as flat vec4 arrays) */
+export async function readScatterLayer(
+  renderer: Renderer,
+  layer: ScatterLayer,
+): Promise<{ A: Float32Array; B: Float32Array; count: number }> {
+  const read = async (buf: StorageBufferNode<'vec4'>): Promise<Float32Array> => {
+    const attr = (buf as unknown as { value: Parameters<Renderer['getArrayBufferAsync']>[0] }).value;
+    return new Float32Array(await renderer.getArrayBufferAsync(attr)).slice(0, layer.count * 4);
+  };
+  const [A, B] = await Promise.all([read(layer.bufA), read(layer.bufB)]);
+  return { A, B, count: layer.count };
+}
+
 export function canopyAt(tex: StorageTexture, wxz: NV2): NF {
   const uv = wxz.div(WORLD_SIZE).add(0.5);
   return (texture(tex, uv) as unknown as NV4).x;

@@ -1,0 +1,62 @@
+/**
+ * Smoke test — boots the default game spawn and checks the player actually
+ * plays: starts in play mode, walking moves them, the eye stays at head
+ * height above the ground, and nothing throws. Needs the dev server on :5173.
+ *
+ *   npm run smoke
+ */
+
+import { laasUrl, launchWebGPU } from './launch';
+
+const failures: string[] = [];
+const check = (ok: boolean, msg: string): void => {
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}`);
+  if (!ok) failures.push(msg);
+};
+
+const { browser } = await launchWebGPU();
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors: string[] = [];
+page.on('pageerror', (e) => errors.push(e.message));
+const logs: string[] = [];
+page.on('console', (m) => logs.push(m.text()));
+
+await page.goto(laasUrl({ scene: 'world', hud: false, freeze: false }), { waitUntil: 'domcontentloaded' });
+await page.waitForFunction(() => window.__laas && (window.__laas.ready || window.__laas.error !== null), undefined, {
+  timeout: 300_000,
+  polling: 250,
+});
+check((await page.evaluate(() => window.__laas.error)) === null, 'boots without error');
+check(logs.some((l) => l.includes('control: play')), 'starts in play mode');
+await page.waitForTimeout(1000);
+
+// a string, not a closure: tsx's keepNames wraps named functions in a
+// __name() helper that doesn't exist inside the page
+const SAMPLE = `(async () => {
+  const L = window.__laas;
+  const out = [];
+  for (let i = 0; i < 25; i++) {
+    await new Promise((r) => setTimeout(r, 120));
+    const p = L.getPose();
+    const g = L.groundProbe(p.p[0], p.p[2]);
+    out.push({ x: p.p[0], z: p.p[2], above: p.p[1] - Math.max(g.ground, g.water) });
+  }
+  return out;
+})()`;
+await page.keyboard.down('KeyW');
+const walk = (await page.evaluate(SAMPLE)) as { x: number; z: number; above: number }[];
+await page.keyboard.up('KeyW');
+
+const first = walk[0];
+const last = walk[walk.length - 1];
+const moved = first && last ? Math.hypot(last.x - first.x, last.z - first.z) : 0;
+check(moved > 5, `walking moves the player (${moved.toFixed(1)} m in 3 s)`);
+const heights = walk.map((s) => s.above);
+check(
+  heights.every((h) => h > 1.5 && h < 1.95),
+  `eye stays at head height (${Math.min(...heights).toFixed(2)}–${Math.max(...heights).toFixed(2)} m)`,
+);
+check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+
+await browser.close();
+if (failures.length > 0) process.exit(1);
