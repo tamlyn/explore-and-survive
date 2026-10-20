@@ -26,12 +26,17 @@ import { TerrainTiles } from '../world/TerrainTiles';
 import { WaterSurface } from '../world/WaterSurface';
 import { WORLD_SIZE } from '../world/WorldConst';
 import { ObstacleField } from '../game/Obstacles';
+import { buildingBlocks, type Ground, planRuins } from '../world/RuinPlan';
+import { buildRuins, clearingTexture } from '../world/Ruins';
 import { obstacleTemplates } from '../game/ObstacleTemplates';
 import { PostStack } from '../render/PostStack';
 import { setupSunShadows } from '../render/ShadowSetup';
 import { Clouds } from '../sky/Clouds';
 import { SunSky } from '../sky/SunSky';
 import type { WorldContext } from './Scenes';
+
+/** the walk spawn faces NE — the serrated massif anchors the first frame */
+const SPAWN_YAW = -0.78;
 
 export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   const { engine, params, seed } = ctx;
@@ -64,21 +69,32 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   // tooling probe handle (tools/probe-state.ts) — light/scene state triage
   (window as unknown as { __laasDbg?: unknown }).__laasDbg = { engine, sunSky };
 
+  const ablate = new Set(
+    (new URLSearchParams(window.location.search).get('ablate') ?? '').split(','),
+  );
+
+  // ruined settlements (?ablate=ruins): laid out on the CPU heights before
+  // the scatter, which must leave their ground clear
+  const ground: Ground = { height: (x, z) => hf.heightAtCpu(x, z), water: (x, z) => hf.waterYAtCpu(x, z) };
+  const spawn = findWalkSpawn(hf);
+  const ruinSites =
+    hf.cpuHeights && !ablate.has('ruins')
+      ? planRuins(ground, seed.sub('ruins'), { x: spawn.x, z: spawn.z, yaw: SPAWN_YAW })
+      : [];
+  const ruinBlocks = ruinSites.map((site) => site.buildings.flatMap((b) => buildingBlocks(b, ground)));
+  engine.stats.counters['ruins.sites'] = ruinSites.length;
+
   // vegetation/rock placement (Phase 5): GPU clustered-Poisson scatter +
   // canopy coverage map — BEFORE the probe field (probes ray-march the bare
   // heightfield; the canopy map is their only knowledge of the forest) and
   // before tiles (under-crown ambient)
   ctx.progress(0.94, 'vegetation: scattering instances');
-  const scatter = await runScatter(engine.renderer, hf, seed);
+  const scatter = await runScatter(engine.renderer, hf, seed, ruinSites.length ? clearingTexture(ruinSites) : null);
   const canopyTex = await buildCanopyMap(engine.renderer, scatter.trees);
   engine.stats.counters['veg.trees'] = scatter.trees.count;
   engine.stats.counters['veg.under'] = scatter.understory.count;
   engine.stats.counters['veg.extras'] = scatter.extras.count;
   engine.stats.counters['veg.stones'] = scatter.stones.count;
-
-  const ablate = new Set(
-    (new URLSearchParams(window.location.search).get('ablate') ?? '').split(','),
-  );
 
   // irradiance probe field (Phase 3 GI; canopy-aware since Phase 5 —
   // ?ablate=canopygi rebuilds the bare-heightfield field for A/B)
@@ -202,6 +218,10 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     }
   }
 
+  if (ruinBlocks.length && view !== 'split') {
+    engine.scene.add(await buildRuins(ruinBlocks, ground, ablate.has('gi') ? null : gi, canopyTex));
+  }
+
   // volumetric clouds (noise bake + sun-shadow map)
   ctx.progress(0.97, 'sky: baking cloud noise');
   const clouds = new Clouds(sunSky.atmosphere);
@@ -224,6 +244,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     engine,
     sunSky,
     shadowRig,
+    ruinSites,
   };
 
   // GPU particles: snow/pollen/leaves riding the wind (?ablate=particles)
@@ -274,6 +295,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
+      structures: ruinBlocks.flat().filter((b) => b.solid),
       ...(obstacles ? { obstacles } : {}),
     };
   }
@@ -295,10 +317,9 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       ctx.hooks.initialPoseMode = 'fly';
       engine.camera.position.set(x, y, z);
     } else {
-      const spawn = findWalkSpawn(hf);
       ctx.hooks.initialPose = {
         p: [spawn.x, hf.heightAtCpu(spawn.x, spawn.z) + 1.7, spawn.z],
-        yaw: -0.78, // face NE — the serrated massif anchors the first frame
+        yaw: SPAWN_YAW,
         pitch: -0.02,
       };
       ctx.hooks.initialPoseMode = 'walk';

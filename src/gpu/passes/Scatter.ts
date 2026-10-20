@@ -20,6 +20,7 @@
  *   B = (yaw, leanX, leanZ, idF)   idF = class·8 + variant  (exact in f32)
  */
 
+import type { Texture } from 'three';
 import type { Renderer } from 'three/webgpu';
 import { StorageTexture, type StorageBufferNode } from 'three/webgpu';
 import {
@@ -380,7 +381,16 @@ export async function runScatter(
   renderer: Renderer,
   hf: Heightfield,
   seed: WorldSeed,
+  /** world-spanning mask: ½ keeps trees and debris away, 1 clears everything */
+  clearing: Texture | null = null,
 ): Promise<ScatterResult> {
+  const keepClear = (wpos: NV2, level: number): void => {
+    if (!clearing) return;
+    const c = (texture(clearing, wpos.div(WORLD_SIZE).add(0.5), 0) as unknown as NV4).x;
+    If(c.greaterThan(level), () => {
+      Return();
+    });
+  };
   const sT = seed.sub('scatter/trees') & 0x7fffffff;
   const sU = seed.sub('scatter/understory') & 0x7fffffff;
   const sE = seed.sub('scatter/extras') & 0x7fffffff;
@@ -408,6 +418,7 @@ export async function runScatter(
     If(s.riverDepth.greaterThan(0.22).or(s.standing.greaterThan(0.3)), () => {
       Return();
     });
+    keepClear(wpos, 0.25);
 
     const clump = clumpField(wpos, sT ^ 0x51f3);
     const dens = byBiome(s.bioId, [0, 0.22, 0.8, 0.85, 0.06, 0.26]);
@@ -523,6 +534,7 @@ export async function runScatter(
     If(s.riverDepth.greaterThan(0.2).or(s.standing.greaterThan(0.3)), () => {
       Return();
     });
+    keepClear(wpos, 0.75);
 
     // canopy proxy = the TREE clump field (same salt → same parents)
     const canopy = clumpField(wpos, sT ^ 0x51f3);
@@ -625,6 +637,7 @@ export async function runScatter(
     If(s.riverDepth.greaterThan(0.3).or(s.standing.greaterThan(0.35)), () => {
       Return();
     });
+    keepClear(wpos, 0.25);
 
     const canopy = clumpField(wpos, sT ^ 0x51f3);
     const forestK = byBiome(s.bioId, [0, 0.3, 1, 1, 0.25, 0.6]).mul(
@@ -738,6 +751,7 @@ export async function runScatter(
     If(s.standing.greaterThan(0.5), () => {
       Return();
     });
+    keepClear(wpos, 0.75);
 
     const canopy = clumpField(wpos, sT ^ 0x51f3);
     const streamK = smoothstep(0.05, 0.3, s.riverDepth);

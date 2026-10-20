@@ -29,6 +29,8 @@ await page.waitForFunction(() => window.__laas && (window.__laas.ready || window
 });
 check((await page.evaluate(() => window.__laas.error)) === null, 'boots without error');
 check(logs.some((l) => l.includes('control: play')), 'starts in play mode');
+const sites = (await page.evaluate('window.__laasDbg.ruinSites.length')) as number;
+check(sites > 0, `ruins stand in the world (${sites} sites)`);
 await page.waitForTimeout(1000);
 
 // a string, not a closure: tsx's keepNames wraps named functions in a

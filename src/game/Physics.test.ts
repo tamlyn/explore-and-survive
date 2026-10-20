@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sampleGrid } from '../world/GridSample';
-import { loadRapier, Physics, type Rapier, type TerrainGrid } from './Physics';
+import { boxColliderDesc, loadRapier, Physics, type Rapier, type TerrainGrid } from './Physics';
 
 let rapier: Rapier;
 beforeAll(async () => {
@@ -46,6 +46,24 @@ describe('terrain heightfield collider', () => {
   it('has no ground outside the world', () => {
     const physics = new Physics(rapier, rampGrid(8, 32));
     expect(physics.terrainY(100, 0)).toBeNull();
+    physics.dispose();
+  });
+});
+
+describe('boxColliderDesc', () => {
+  it('places a rotated box where the ray expects it', () => {
+    const physics = new Physics(rapier, null);
+    // a thin wall turned 90° about y: long along z, thin along x
+    const yaw = Math.PI / 2;
+    const q: [number, number, number, number] = [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
+    physics.addCollider(boxColliderDesc(rapier, { x: 10, y: 1, z: 0, hx: 3, hy: 1, hz: 0.25, q }), 'stone');
+    physics.step();
+    const hit = physics.castRay({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, 50);
+    expect(hit?.distance).toBeCloseTo(9.75, 4);
+    expect(hit?.surface).toBe('stone');
+    // 2 m along z is still wall; 4 m is past its end
+    expect(physics.castRay({ x: 0, y: 1, z: 2 }, { x: 1, y: 0, z: 0 }, 50)).not.toBeNull();
+    expect(physics.castRay({ x: 0, y: 1, z: 4 }, { x: 1, y: 0, z: 0 }, 50)).toBeNull();
     physics.dispose();
   });
 });

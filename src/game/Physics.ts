@@ -53,6 +53,22 @@ export function terrainColliderDesc(rapier: Rapier, grid: TerrainGrid): RAPIER.C
   return rapier.ColliderDesc.heightfield(res - 1, res - 1, colMajor, { x: span, y: 1, z: span });
 }
 
+/** an oriented box: centre, half extents and rotation quaternion (x, y, z, w) */
+export interface Box {
+  x: number;
+  y: number;
+  z: number;
+  hx: number;
+  hy: number;
+  hz: number;
+  q: [number, number, number, number];
+}
+
+export function boxColliderDesc(rapier: Rapier, b: Box): RAPIER.ColliderDesc {
+  const [x, y, z, w] = b.q;
+  return rapier.ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation({ x, y, z, w });
+}
+
 export class Physics {
   readonly world: RAPIER.World;
   private readonly terrain: RAPIER.Collider | null;
