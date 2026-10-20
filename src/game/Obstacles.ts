@@ -13,12 +13,12 @@
  */
 
 import type RAPIER from '@dimforge/rapier3d-compat';
-import type { Rapier } from './Physics';
+import type { Physics, Rapier, Surface } from './Physics';
 
 /** per (class, variant) collision shape in the instance's local space */
 export type ObstacleTemplate =
   | { kind: 'trunk'; radius: number; height: number }
-  | { kind: 'hull'; points: Float32Array };
+  | { kind: 'hull'; points: Float32Array; surface: Surface };
 
 export interface InstanceArrays {
   A: Float32Array;
@@ -118,6 +118,11 @@ export class ObstacleField {
     return dx * dx + dz * dz;
   }
 
+  surface(id: number): Surface {
+    const { template } = this.entries[id] as Entry;
+    return template.kind === 'trunk' ? 'wood' : template.surface;
+  }
+
   /** world-space collider description for obstacle `id` */
   colliderDesc(rapier: Rapier, id: number): RAPIER.ColliderDesc | null {
     const { src, i, template } = this.entries[id] as Entry;
@@ -155,8 +160,7 @@ export class ObstacleStreamer {
   private lastZ = Infinity;
 
   constructor(
-    private readonly rapier: Rapier,
-    private readonly world: RAPIER.World,
+    private readonly physics: Physics,
     private readonly field: ObstacleField,
     private readonly radius = 40,
     /** refresh only after the focus moves this far */
@@ -175,15 +179,15 @@ export class ObstacleStreamer {
     const keep = new Set(this.field.near(x, z, this.radius + this.hysteresis));
     for (const [id, collider] of this.live) {
       if (!keep.has(id)) {
-        this.world.removeCollider(collider, false);
+        this.physics.removeCollider(collider);
         this.live.delete(id);
       }
     }
     const r2 = this.radius * this.radius;
     for (const id of keep) {
       if (this.live.has(id) || this.field.distanceSq(id, x, z) > r2) continue;
-      const desc = this.field.colliderDesc(this.rapier, id);
-      if (desc) this.live.set(id, this.world.createCollider(desc));
+      const desc = this.field.colliderDesc(this.physics.rapier, id);
+      if (desc) this.live.set(id, this.physics.addCollider(desc, this.field.surface(id)));
     }
   }
 }

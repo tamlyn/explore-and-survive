@@ -44,6 +44,7 @@ const TRUNK: ObstacleTemplate = { kind: 'trunk', radius: 0.4, height: 8 };
 /** 1 m cube sitting on its base */
 const CUBE: ObstacleTemplate = {
   kind: 'hull',
+  surface: 'stone',
   points: new Float32Array([
     -0.5, 0, -0.5, 0.5, 0, -0.5, -0.5, 0, 0.5, 0.5, 0, 0.5, -0.5, 1, -0.5, 0.5, 1, -0.5, -0.5, 1, 0.5, 0.5, 1,
     0.5,
@@ -99,7 +100,7 @@ describe('ObstacleStreamer', () => {
       [arrays([{ x: 5, z: 0, id: 0 }, { x: 100, z: 0, id: 0 }, { x: 103, z: 4, id: 160 }])],
       TEMPLATES,
     );
-    const streamer = new ObstacleStreamer(rapier, p.world, field, 40);
+    const streamer = new ObstacleStreamer(p, field, 40);
     streamer.update(0, 0);
     expect(streamer.activeCount).toBe(1);
     streamer.update(100, 0);
@@ -113,7 +114,7 @@ describe('ObstacleStreamer', () => {
       [arrays([{ x: 4, z: 0, id: 0 }, { x: 0, z: 4, s: 1.5, id: 160 }])],
       TEMPLATES,
     );
-    const streamer = new ObstacleStreamer(rapier, p.world, field, 40);
+    const streamer = new ObstacleStreamer(p, field, 40);
     streamer.update(0, 0);
     p.step();
 

@@ -39,8 +39,9 @@ export class PlayerMotor {
   /** downward speed at the most recent landing (0 when none this step) */
   landingSpeed = 0;
 
+  /** the capsule — shots from the eye start inside it and must skip it */
+  readonly collider: RAPIER.Collider;
   private readonly body: RAPIER.RigidBody;
-  private readonly collider: RAPIER.Collider;
   private readonly kcc: RAPIER.KinematicCharacterController;
 
   constructor(

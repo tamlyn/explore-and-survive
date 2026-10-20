@@ -7,3 +7,9 @@ export function aimCamera(camera: Camera, yaw: number, pitch: number, roll = 0):
   camera.rotateX(pitch);
   if (roll !== 0) camera.rotateZ(roll);
 }
+
+/** unit forward vector of the same convention */
+export function aimDirection(yaw: number, pitch: number): { x: number; y: number; z: number } {
+  const c = Math.cos(pitch);
+  return { x: -Math.sin(yaw) * c, y: Math.sin(pitch), z: -Math.cos(yaw) * c };
+}

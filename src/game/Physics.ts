@@ -8,6 +8,19 @@ import RAPIER from '@dimforge/rapier3d-compat';
 
 export type Rapier = typeof RAPIER;
 
+/** what a static collider is made of — drives impact effects */
+export type Surface = 'ground' | 'wood' | 'stone';
+
+export interface RayHit {
+  x: number;
+  y: number;
+  z: number;
+  normal: { x: number; y: number; z: number };
+  distance: number;
+  /** null for colliders added without a surface (the player, props) */
+  surface: Surface | null;
+}
+
 /** CPU copy of the render heightfield: sample (i, j) sits at
  *  x = ((i + 0.5) / res − 0.5) · worldSize, likewise z; row-major by z */
 export interface TerrainGrid {
@@ -43,19 +56,54 @@ export function terrainColliderDesc(rapier: Rapier, grid: TerrainGrid): RAPIER.C
 export class Physics {
   readonly world: RAPIER.World;
   private readonly terrain: RAPIER.Collider | null;
+  /** collider handle → surface */
+  private readonly surfaces = new Map<number, Surface>();
 
   constructor(
     readonly rapier: Rapier,
     terrain: TerrainGrid | null,
   ) {
     this.world = new rapier.World({ x: 0, y: 0, z: 0 });
-    this.terrain = terrain ? this.world.createCollider(terrainColliderDesc(rapier, terrain)) : null;
+    this.terrain = terrain ? this.addCollider(terrainColliderDesc(rapier, terrain), 'ground') : null;
     // colliders only become visible to queries once the broad phase has run
     this.world.step();
   }
 
   step(): void {
     this.world.step();
+  }
+
+  /** a static collider of the given surface */
+  addCollider(desc: RAPIER.ColliderDesc, surface: Surface): RAPIER.Collider {
+    const collider = this.world.createCollider(desc);
+    this.surfaces.set(collider.handle, surface);
+    return collider;
+  }
+
+  removeCollider(collider: RAPIER.Collider): void {
+    this.surfaces.delete(collider.handle);
+    this.world.removeCollider(collider, false);
+  }
+
+  /** first solid hit along a ray; `dir` must be unit length */
+  castRay(
+    origin: { x: number; y: number; z: number },
+    dir: { x: number; y: number; z: number },
+    maxDistance: number,
+    exclude?: RAPIER.Collider,
+  ): RayHit | null {
+    const ray = new this.rapier.Ray(origin, dir);
+    const hit = this.world.castRayAndGetNormal(ray, maxDistance, true, undefined, undefined, exclude);
+    if (!hit) return null;
+    const p = ray.pointAt(hit.timeOfImpact);
+    return {
+      x: p.x,
+      y: p.y,
+      z: p.z,
+      normal: { x: hit.normal.x, y: hit.normal.y, z: hit.normal.z },
+      distance: hit.timeOfImpact,
+      surface: this.surfaces.get(hit.collider.handle) ?? null,
+    };
   }
 
   /** height of the terrain collider's surface under (x, z) — obstacles

@@ -12,14 +12,15 @@ import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import { VegClass } from '../gpu/passes/Scatter';
 import type { VegLib } from '../vegetation/VegLibrary';
 import type { ObstacleTemplate } from './Obstacles';
+import type { Surface } from './Physics';
 
-const HULL_CLASSES = new Set<number>([
-  VegClass.Log,
-  VegClass.Stump,
-  VegClass.Boulder,
-  VegClass.Slab,
-  VegClass.StoneL,
-  VegClass.StoneM,
+const HULL_SURFACES = new Map<number, Surface>([
+  [VegClass.Log, 'wood'],
+  [VegClass.Stump, 'wood'],
+  [VegClass.Boulder, 'stone'],
+  [VegClass.Slab, 'stone'],
+  [VegClass.StoneL, 'stone'],
+  [VegClass.StoneM, 'stone'],
 ]);
 const TREE_CLASS_LIMIT = 6;
 
@@ -31,10 +32,11 @@ export function obstacleTemplates(lib: VegLib): Map<number, ObstacleTemplate> {
       if (pool.trunkRadius) {
         out.set(key, { kind: 'trunk', radius: pool.trunkRadius, height: pool.height });
       }
-    } else if (HULL_CLASSES.has(pool.cls)) {
+    } else {
+      const surface = HULL_SURFACES.get(pool.cls);
       // the low-detail ring is plenty for a hull and far fewer points
       const geo = (pool.r2 ?? pool.r1)?.[0]?.geo;
-      if (geo) out.set(key, { kind: 'hull', points: hullPoints(geo) });
+      if (surface && geo) out.set(key, { kind: 'hull', points: hullPoints(geo), surface });
     }
   }
   return out;

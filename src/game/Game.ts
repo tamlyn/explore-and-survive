@@ -60,7 +60,7 @@ export class Game {
     const motor = new PlayerMotor(rapier, physics.world, world.waterAt);
     const player = new Player(motor, () => physics.step());
     const obstacles = world.obstacles
-      ? new ObstacleStreamer(rapier, physics.world, world.obstacles)
+      ? new ObstacleStreamer(physics, world.obstacles)
       : null;
     this.attached = {
       world,
