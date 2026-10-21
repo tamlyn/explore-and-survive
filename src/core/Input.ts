@@ -14,6 +14,24 @@ const LOCK_COOLDOWN_MS = 1300;
 // recent (transient user activation lasts ~5 s — stay well inside it)
 const LOCK_INTENT_MS = 3500;
 const LOOK_RADIANS_PER_PX = 0.0022;
+const INVERT_Y_KEY = 'laas.invertY';
+
+/** storage can be missing or refuse (private windows, blocked site data) */
+function loadSetting(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function saveSetting(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // the setting just won't outlive the page
+  }
+}
 
 export class Input {
   /** false while tooling (flythrough) owns the camera: no lock, no look */
@@ -24,6 +42,7 @@ export class Input {
   private readonly presses = new Set<string>();
   private lookX = 0;
   private lookY = 0;
+  private invertYV = loadSetting(INVERT_Y_KEY) === '1';
   private wheelV = 0;
 
   constructor(dom: HTMLElement) {
@@ -134,9 +153,20 @@ export class Input {
     this.wheelV = 0;
   }
 
+  /** mouse forward looks down; remembered between visits */
+  get invertY(): boolean {
+    return this.invertYV;
+  }
+
+  set invertY(on: boolean) {
+    this.invertYV = on;
+    saveSetting(INVERT_Y_KEY, on ? '1' : '0');
+  }
+
   /** mouse-look delta in radians (yaw right +, pitch down +) since the last take */
   takeLook(): { yaw: number; pitch: number } {
-    const look = { yaw: this.lookX * LOOK_RADIANS_PER_PX, pitch: this.lookY * LOOK_RADIANS_PER_PX };
+    const pitch = this.lookY * LOOK_RADIANS_PER_PX;
+    const look = { yaw: this.lookX * LOOK_RADIANS_PER_PX, pitch: this.invertYV ? -pitch : pitch };
     this.lookX = 0;
     this.lookY = 0;
     return look;

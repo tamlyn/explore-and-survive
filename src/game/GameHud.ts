@@ -1,13 +1,15 @@
 /**
  * GameHud — crosshair (which flashes on a hit), ammo count, health bar, a
- * red flash when hurt and the death notice, shown while playing.
+ * red flash when hurt, the death notice and brief toasts, shown while
+ * playing.
  */
 
 import type { Weapon } from './Weapon';
 
-/** how long the hit marker and hurt flash last (s) */
+/** how long the hit marker, hurt flash and toasts last (s) */
 const HIT_TIME = 0.15;
 const HURT_TIME = 0.6;
+const TOAST_TIME = 1.5;
 
 function div(css: string[], parent?: HTMLElement): HTMLDivElement {
   const d = document.createElement('div');
@@ -54,7 +56,15 @@ export class GameHud {
     ],
     this.root,
   );
+  private readonly toastBox = div(
+    [
+      'position:absolute', 'left:0', 'right:0', 'top:20%', 'text-align:center', 'opacity:0',
+      'color:rgba(255,255,255,0.9)', 'font-size:18px', 'text-shadow:0 1px 4px rgba(0,0,0,0.8)',
+    ],
+    this.root,
+  );
   private shown = '';
+  private toastLeft = 0;
   private shownHp = -1;
   private hitLeft = 0;
   private hurtLeft = 0;
@@ -90,6 +100,12 @@ export class GameHud {
     this.hurtLeft = HURT_TIME;
   }
 
+  /** a brief message, e.g. a setting changed */
+  toast(text: string): void {
+    this.toastBox.textContent = text;
+    this.toastLeft = TOAST_TIME;
+  }
+
   /** once per frame: health and the fading flashes */
   updateVitals(dt: number, hp: number, max: number): void {
     const pct = Math.round((hp / max) * 100);
@@ -100,6 +116,8 @@ export class GameHud {
     }
     this.hitLeft = Math.max(0, this.hitLeft - dt);
     this.hurtLeft = Math.max(0, this.hurtLeft - dt);
+    this.toastLeft = Math.max(0, this.toastLeft - dt);
+    this.toastBox.style.opacity = String(Math.min(1, this.toastLeft / 0.3));
     this.marker.style.opacity = String(this.hitLeft > 0 ? 1 : 0);
     this.hurtFlash.style.opacity = String(Math.max(this.hurtLeft / HURT_TIME, hp <= 0 ? 1 : 0));
   }

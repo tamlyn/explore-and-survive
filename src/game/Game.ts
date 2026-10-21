@@ -1,7 +1,8 @@
 /**
  * Game — owns input and decides who drives the camera: the player (normal
  * play, armed — see Gunplay) or the free-fly camera (debug/tooling). `V`
- * toggles between them, `P` logs the current pose as a `?cam=` string.
+ * toggles between them, `P` logs the current pose as a `?cam=` string, `Y`
+ * inverts mouse look.
  *
  * The player's fixed physics tick advances the whole world, robots
  * included, so in fly mode the robots hold still. The player has health;
@@ -215,6 +216,12 @@ export class Game {
     if (input.takePress('KeyP')) {
       // eslint-disable-next-line no-console
       console.log(`[pose] cam=${formatCamString(this.getPose())}`);
+    }
+    if (input.takePress('KeyY')) {
+      input.invertY = !input.invertY;
+      this.attached?.hud.toast(input.invertY ? 'Mouse look inverted' : 'Mouse look normal');
+      // eslint-disable-next-line no-console
+      console.log(`[laas] invert Y ${input.invertY ? 'on' : 'off'}`);
     }
     // tooling (flythrough) owns the camera while input is disabled
     if (!input.enabled) {

@@ -83,6 +83,21 @@ await page.waitForTimeout(1500);
 const reloaded = await ammo();
 check(reloading === 'reloading' && reloaded === '12 / 12', `R reloads (${reloading} → ${reloaded})`);
 
+// mouse down looks down, or up once Y inverts it
+const pitchAfterDrag = async (): Promise<number> => {
+  await page.mouse.move(640, 400);
+  await page.waitForTimeout(150);
+  const before = (await page.evaluate('window.__laas.getPose().pitch')) as number;
+  await page.mouse.move(640, 460, { steps: 4 });
+  await page.waitForTimeout(150);
+  return ((await page.evaluate('window.__laas.getPose().pitch')) as number) - before;
+};
+const normal = await pitchAfterDrag();
+await page.keyboard.press('KeyY');
+const inverted = await pitchAfterDrag();
+await page.keyboard.press('KeyY');
+check(normal < 0 && inverted > 0, `Y inverts mouse look (${normal.toFixed(3)} → ${inverted.toFixed(3)} rad)`);
+
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 
 await browser.close();
