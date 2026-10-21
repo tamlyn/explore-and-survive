@@ -75,7 +75,6 @@ export class Hud {
 
   private render(): void {
     const s = this.engine.stats;
-    const c = this.engine.camera.position;
     const fmt = (n: number): string => n.toLocaleString('en-US');
     const lines: string[] = [
       `LAAS  seed=${this.params.seed} scene=${this.params.scene} T=${this.params.timeOfDay}`,
@@ -84,8 +83,9 @@ export class Hud {
       this.params.prof
         ? `gpu render ${s.gpuPasses['render']?.toFixed(2) ?? '–'} ms  compute ${s.gpuPasses['compute']?.toFixed(2) ?? '–'} ms`
         : 'gpu timings off (reload with ?prof=1)',
-      `cam ${c.x.toFixed(1)}, ${c.y.toFixed(1)}, ${c.z.toFixed(1)}`,
     ];
+    // ahead of the long lists, which the panel's height may cut off
+    for (const p of this.providers) lines.push('—', ...p());
     // per-pass GPU attribution (spec §6 HUD requirement; Phase 7 perf)
     const passes = Object.entries(s.gpuPasses)
       .filter(([k, v]) => (k.startsWith('r.') || k.startsWith('c.')) && v >= 0.005)
@@ -100,8 +100,7 @@ export class Hud {
       lines.push('—');
       for (const k of counterKeys.sort()) lines.push(`${k}: ${fmt(s.counters[k] ?? 0)}`);
     }
-    for (const p of this.providers) lines.push('—', ...p());
-    lines.push('—', 'F3 hud · V walk/fly · 1-9 bookmarks · F flythrough · P pose');
+    lines.push('—', 'F3 hud · H controls · P copy location');
     this.el.textContent = lines.join('\n');
   }
 }

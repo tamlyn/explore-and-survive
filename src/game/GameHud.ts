@@ -1,7 +1,7 @@
 /**
  * GameHud — crosshair (which flashes on a hit), ammo count, health bar, a
- * red flash and an arc pointing at the attacker when hurt, the death notice
- * and brief toasts, shown while playing.
+ * red flash and an arc pointing at the attacker when hurt and the death
+ * notice, shown while playing; and brief toasts, shown whenever.
  */
 
 import type { Weapon } from './Weapon';
@@ -59,13 +59,11 @@ export class GameHud {
     ],
     this.root,
   );
-  private readonly toastBox = div(
-    [
-      'position:absolute', 'left:0', 'right:0', 'top:20%', 'text-align:center', 'opacity:0',
-      'color:rgba(255,255,255,0.9)', 'font-size:18px', 'text-shadow:0 1px 4px rgba(0,0,0,0.8)',
-    ],
-    this.root,
-  );
+  /** outside the root: settings change while flying too */
+  private readonly toastBox = div([
+    'position:fixed', 'left:0', 'right:0', 'top:20%', 'text-align:center', 'opacity:0', 'z-index:900',
+    'pointer-events:none', 'color:rgba(255,255,255,0.9)', 'font-size:18px', 'text-shadow:0 1px 4px rgba(0,0,0,0.8)',
+  ]);
   private shown = '';
   private toastLeft = 0;
   private shownHp = -1;
@@ -82,7 +80,7 @@ export class GameHud {
       this.pointer,
     );
     this.notice.textContent = 'You died';
-    document.body.append(this.root);
+    document.body.append(this.root, this.toastBox);
   }
 
   set visible(on: boolean) {
@@ -121,7 +119,14 @@ export class GameHud {
     this.toastLeft = TOAST_TIME;
   }
 
-  /** once per frame: health and the fading flashes */
+  /** once per frame, playing or not */
+  updateToast(dt: number): void {
+    if (this.toastLeft === 0) return;
+    this.toastLeft = Math.max(0, this.toastLeft - dt);
+    this.toastBox.style.opacity = String(Math.min(1, this.toastLeft / 0.3));
+  }
+
+  /** once per frame while playing: health and the fading flashes */
   updateVitals(dt: number, hp: number, max: number): void {
     const pct = Math.round((hp / max) * 100);
     if (pct !== this.shownHp) {
@@ -133,8 +138,6 @@ export class GameHud {
     this.hurtLeft = Math.max(0, this.hurtLeft - dt);
     this.pointerLeft = Math.max(0, this.pointerLeft - dt);
     this.pointer.style.opacity = String(Math.min(1, this.pointerLeft / 0.4));
-    this.toastLeft = Math.max(0, this.toastLeft - dt);
-    this.toastBox.style.opacity = String(Math.min(1, this.toastLeft / 0.3));
     this.marker.style.opacity = String(this.hitLeft > 0 ? 1 : 0);
     this.hurtFlash.style.opacity = String(Math.max(this.hurtLeft / HURT_TIME, hp <= 0 ? 1 : 0));
   }

@@ -94,7 +94,7 @@ async function boot(): Promise<void> {
     if (hooks.initialPoseMode === 'walk' && q.get('walk') !== '0') game.play();
   }
 
-  new Hud(engine, params);
+  new Hud(engine, params).addProvider(() => game.where());
 
   hooks.setPose = (p) => game.setPose(p);
   hooks.getPose = () => game.getPose();

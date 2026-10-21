@@ -98,6 +98,11 @@ const inverted = await pitchAfterDrag();
 await page.keyboard.press('KeyY');
 check(normal < 0 && inverted > 0, `Y inverts mouse look (${normal.toFixed(3)} → ${inverted.toFixed(3)} rad)`);
 
+await page.keyboard.press('KeyP');
+await page.waitForTimeout(200);
+const where = logs.find((l) => l.startsWith('[where]')) ?? '';
+check(/cam=\S+ · near S1 \d+ m .+ · looking at .+, \d+ m/.test(where), `P reports the location (${where})`);
+
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 
 await browser.close();

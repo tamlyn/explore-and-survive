@@ -1,8 +1,10 @@
 /**
  * Game — owns input and decides who drives the camera: the player (normal
  * play, armed — see Gunplay) or the free-fly camera (debug/tooling). `V`
- * toggles between them, `P` logs the current pose as a `?cam=` string, `Y`
- * inverts mouse look.
+ * toggles between them, `Y` inverts mouse look, `H` shows the controls.
+ * `P` copies a playtest report of where the camera is (as a `?cam=` string,
+ * which boots back to it) and what it's looking at, in the names Places and
+ * Enemies give things; the F3 panel shows the same live.
  *
  * The player's fixed physics tick advances the whole world, robots
  * included, so in fly mode the robots hold still. The player has health;
@@ -14,13 +16,15 @@
  */
 
 import type { PerspectiveCamera, Scene } from 'three';
-import { bearing } from '../core/CameraAim';
+import { aimDirection, bearing } from '../core/CameraAim';
 import { FlyCamera } from '../core/FlyCamera';
 import type { CamPose } from '../core/Hooks';
 import { formatCamString } from '../core/Params';
 import { Input } from '../core/Input';
 import type { EnemySpawn } from '../world/EnemyPlan';
 import { sampleGrid } from '../world/GridSample';
+import { compass, heading, type Places } from '../world/Places';
+import { ControlsCard } from './ControlsCard';
 import { Enemies, type EnemyTarget, type RobotViews, SLEEP_RADIUS } from './Enemies';
 import { FirstPersonRig } from './FirstPersonRig';
 import { GameHud } from './GameHud';
@@ -33,6 +37,7 @@ import { boxColliderDesc, loadRapier, Physics, type Surface, type TerrainGrid } 
 import { FIXED_DT, Player, type PlayerInput } from './Player';
 import { PlayerMotor, type Vec3 } from './PlayerMotor';
 import { Sfx } from './Sfx';
+import { type ImpactSurface, traceShot } from './Shot';
 import { Tracers } from './Tracers';
 import { Viewmodel, type WorldLights } from './Viewmodel';
 import { PISTOL, Weapon } from './Weapon';
@@ -51,6 +56,8 @@ export interface GameWorld {
   spawn: { x: number; z: number; yaw: number };
   /** the robots and how to draw them — absent in scenes without them */
   enemies?: { spawns: EnemySpawn[]; views: RobotViews };
+  /** names for the settlements and what stands in them */
+  places?: Places;
 }
 
 export type ControlMode = 'play' | 'fly';
@@ -64,6 +71,18 @@ const PLAYER_REGEN = { delay: 5, rate: 8 };
 const RESPAWN_DELAY = 4;
 /** robots aim this far above the player's feet (m) */
 const CHEST = 1.3;
+/** how far "looking at" looks (m) */
+const LOOK_RANGE = 1000;
+
+/** what a ray stopped on, when nothing more specific stands there */
+const SURFACE_NAMES: Record<ImpactSurface, string> = {
+  ground: 'ground',
+  wood: 'tree or log',
+  stone: 'rock',
+  metal: 'metal',
+  rubber: 'rubber',
+  water: 'water',
+};
 
 /** what the player does while dead: nothing */
 const STILL: PlayerInput = {
@@ -97,6 +116,7 @@ export class Game {
   readonly viewmodel: Viewmodel;
   private modeV: ControlMode = 'fly';
   private attached: Attached | null = null;
+  private readonly controls = new ControlsCard();
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -214,10 +234,8 @@ export class Game {
 
   update(dt: number): void {
     const input = this.input;
-    if (input.takePress('KeyP')) {
-      // eslint-disable-next-line no-console
-      console.log(`[pose] cam=${formatCamString(this.getPose())}`);
-    }
+    if (input.takePress('KeyP')) this.report();
+    if (input.takePress('KeyH') || input.takePress('Slash')) this.controls.toggle();
     if (input.takePress('KeyY')) {
       input.invertY = !input.invertY;
       this.attached?.hud.toast(input.invertY ? 'Mouse look inverted' : 'Mouse look normal');
@@ -262,6 +280,7 @@ export class Game {
     // fading, and robots near the flying camera show
     a?.impacts.update(dt);
     a?.tracers.update(dt);
+    a?.hud.updateToast(dt);
     a?.enemies?.update(dt, this.modeV === 'play' ? a.player.eye : this.camera.position);
     input.endFrame();
   }
@@ -333,6 +352,54 @@ export class Game {
       console.log('[laas] control: fly (V toggles play)');
     }
     this.fly.setPose(pose);
+  }
+
+  /** where the camera is and what it's looking at, a line each */
+  where(): string[] {
+    const pose = this.getPose();
+    const [x, y, z] = pose.p;
+    const lines = [`at ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}  facing ${compass(heading(-Math.sin(pose.yaw), -Math.cos(pose.yaw)))}`];
+    const a = this.attached;
+    if (!a) return lines;
+    const near = a.world.places?.nearest(x, z, 2) ?? [];
+    if (near.length) {
+      lines.push(`near ${near.map((s) => `${s.name} ${Math.round(s.distance)} m ${compass(s.heading)}`).join(', ')}`);
+    }
+    lines.push(`looking at ${this.lookingAt(a, pose)}`);
+    return lines;
+  }
+
+  private lookingAt(a: Attached, pose: CamPose): string {
+    const [x, y, z] = pose.p;
+    // nothing steps the physics while flying, so robots woken since would
+    // be invisible to the ray
+    if (this.modeV === 'fly') a.physics.step();
+    const hit = traceShot(
+      { physics: a.physics, obstacles: a.world.obstacles, waterAt: a.world.waterAt },
+      { x, y, z },
+      aimDirection(pose.yaw, pose.pitch),
+      LOOK_RANGE,
+      a.motor.collider,
+    );
+    if (!hit) return 'sky';
+    const built = hit.surface !== 'ground' && hit.surface !== 'water';
+    const what =
+      (hit.target && a.enemies?.describe(hit.target)) ??
+      (built ? a.world.places?.at(hit.x, hit.z) : null) ??
+      SURFACE_NAMES[hit.surface];
+    return `${what}, ${Math.round(Math.hypot(hit.x - x, hit.y - y, hit.z - z))} m`;
+  }
+
+  /** logs the playtest report and copies it for pasting */
+  private report(): void {
+    const text = [`cam=${formatCamString(this.getPose())}`, ...this.where().slice(1)].join(' · ');
+    // eslint-disable-next-line no-console
+    console.log(`[where] ${text}`);
+    const toast = (t: string): void => this.attached?.hud.toast(t);
+    navigator.clipboard.writeText(text).then(
+      () => toast('Location copied'),
+      () => toast('Location logged to the console'),
+    );
   }
 
   getPose(): CamPose {

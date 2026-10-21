@@ -168,6 +168,14 @@ describe('Enemies', () => {
     expect(s.enemies.awakeCount).toBe(0);
   });
 
+  it('names the robot a ray hits by its place in the plan', () => {
+    const s = setup([gunner(0, 200), gunner(0, -30)]);
+    s.run(0.1);
+    const hit = physics!.castRay({ x: 0, y: 1, z: -1 }, { x: 0, y: 0, z: -1 }, 60, undefined);
+    expect(s.enemies.describe(hit!.target!)).toBe('R2 walkerGun patrol 60/60');
+    expect(s.enemies.describe(s.player)).toBeNull();
+  });
+
   it('robots come to look when they hear a shot', () => {
     const s = setup([{ kind: 'walker', x: 40, z: 0, roam: 2 }]);
     s.player.at(0, 80);

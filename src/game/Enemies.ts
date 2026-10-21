@@ -127,6 +127,12 @@ class Robot implements Hittable {
   }
 }
 
+/** a robot's name for playtest reports: its place in the plan, counting
+ *  from 1 like the settlements', so stable per seed */
+function robotName(index: number): string {
+  return `R${index + 1}`;
+}
+
 const EYE: Vec3 = { x: 0, y: 0, z: 0 };
 const MUZZLE: Vec3 = { x: 0, y: 0, z: 0 };
 
@@ -159,11 +165,18 @@ export class Enemies {
   }
 
   /** awake robots, for tests and debugging */
-  snapshot(): { kind: RobotKind; x: number; y: number; z: number; state: string; hp: number }[] {
+  snapshot(): { id: string; kind: RobotKind; x: number; y: number; z: number; state: string; hp: number }[] {
     return [...this.awake.values()].map((r) => {
       const at = r.dead ? r.wreck : r.motor.feet;
-      return { kind: r.spawn.kind, x: at.x, y: at.y, z: at.z, state: r.brain.state, hp: r.health.hp };
+      return { id: robotName(r.index), kind: r.spawn.kind, x: at.x, y: at.y, z: at.z, state: r.brain.state, hp: r.health.hp };
     });
+  }
+
+  /** which robot a shot into `target` would hit, e.g. "R37 walkerGun
+   *  hunt 40/60" — or null if it isn't one */
+  describe(target: Hittable): string | null {
+    if (!(target instanceof Robot)) return null;
+    return `${robotName(target.index)} ${target.spawn.kind} ${target.brain.state} ${target.health.hp}/${target.health.max}`;
   }
 
   /** a gunshot at `at`: robots in earshot come to look */

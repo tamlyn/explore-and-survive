@@ -40,7 +40,9 @@ npm run dev
 
 Open `http://localhost:5173` in Google Chrome 113 or newer on a desktop or laptop. Other Chromium-based browsers (Edge, Brave, Arc, Opera) should work too. Safari and Firefox are not supported — the engine is built and tested against Chrome's WebGPU implementation, and the page detects this before loading and says so. Mobile and tablet browsers get a notice recommending a computer. There is no WebGL fallback by design: if Chrome is present but WebGPU is unavailable, the page fails loudly with diagnostics and the exact things to check (hardware acceleration, `chrome://gpu`, browser version).
 
-Controls: click to capture the mouse. WASD to move, Shift to sprint, Space to jump, left click to shoot, R to reload, V toggles walk/fly, mouse wheel sets fly speed, E/Q move vertically in fly mode. Keys 1–9 jump to composed bookmarks, F starts the flythrough, F3 opens the debug HUD with per-pass GPU timings, P prints the current camera pose as a `?cam=` string, Y inverts mouse look (remembered).
+Controls: click to capture the mouse. WASD to move, Shift to sprint, Space to jump, left click to shoot, R to reload, V toggles walk/fly, mouse wheel sets fly speed, E/Q move vertically in fly mode. Keys 1–9 jump to composed bookmarks, F starts the flythrough, F3 opens the debug HUD with per-pass GPU timings, Y inverts mouse look (remembered), H shows all the controls.
+
+Playtest reports: settlements are named S1, S2… (S1 is the one in view of the spawn), their buildings S1.B1…, and robots R1, R2…; the names hold for a seed. Compass headings put north towards −z. P copies a one-line report of where the camera is (as a `?cam=` string, which boots back to that spot), the nearest settlements and what's under the crosshair, for pasting into a bug report; the F3 panel shows the same live.
 
 Useful URL parameters: `?seed=N` (world seed), `?T=hours` (time of day, 0–24), `?shot=1..9` (boot into a bookmark), `?cam=x,y,z,yaw,pitch[,fov]` (exact pose), `?preset=low|high|ultra`, `?freeze=1` (freeze world motion), `?hud=1` (HUD open at boot).
 

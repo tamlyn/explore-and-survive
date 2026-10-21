@@ -30,6 +30,7 @@ import { buildingBlocks, type Ground, planRuins } from '../world/RuinPlan';
 import { buildRuins } from '../world/Ruins';
 import { clearingTexture, settlementClearings, trail } from '../world/Clearing';
 import { planEnemies } from '../world/EnemyPlan';
+import { Places } from '../world/Places';
 import { planProps } from '../world/PropPlan';
 import { RobotModels } from '../game/RobotModels';
 import { Props } from '../world/Props';
@@ -343,6 +344,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
       structures,
       spawn: { x: spawn.x, z: spawn.z, yaw: SPAWN_YAW },
+      places: new Places(ruinSites, props),
       ...(obstacles ? { obstacles } : {}),
       ...(robotModels ? { enemies: { spawns: enemySpawns, views: robotModels } } : {}),
     };
