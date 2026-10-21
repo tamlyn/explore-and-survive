@@ -371,6 +371,13 @@ export class TerrainTiles {
     farMat.normalNode = farShading.normalNode;
     farMat.roughnessNode = farShading.roughnessNode;
     farMat.metalnessNode = float(0);
+    // the ring's ~100 × 290 m triangles reach into the world's corners, where
+    // they bridge valleys as flat sheets above the tiles — the tiles cover
+    // the whole square, so the shell only draws outside it
+    const edge = positionWorld.xz.abs();
+    const inside = edge.x.max(edge.y).lessThan(WORLD_HALF);
+    farMat.opacityNode = inside.select(float(0), float(1));
+    farMat.alphaTest = 0.5;
     if (opts.gi && !ablate.has('gi')) {
       const farIrr = opts.gi.irradiance(positionWorld, farShading.worldNormalNode);
       (farMat as unknown as { setupLightMap: () => unknown }).setupLightMap = () =>

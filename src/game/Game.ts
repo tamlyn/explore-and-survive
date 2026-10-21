@@ -73,6 +73,8 @@ const RESPAWN_DELAY = 4;
 const CHEST = 1.3;
 /** how far "looking at" looks (m) */
 const LOOK_RANGE = 1000;
+/** the player stops this far inside the terrain's edge (m) */
+const WORLD_EDGE_MARGIN = 2;
 
 /** what a ray stopped on, when nothing more specific stands there */
 const SURFACE_NAMES: Record<ImpactSurface, string> = {
@@ -138,6 +140,7 @@ export class Game {
     const physics = new Physics(rapier, world.terrain);
     for (const box of world.structures ?? []) physics.addCollider(boxColliderDesc(rapier, box), box.surface);
     const motor = new PlayerMotor(rapier, physics.world, world.waterAt);
+    motor.edge = world.terrain.worldSize / 2 - WORLD_EDGE_MARGIN;
     const health = new Health(PLAYER_HP, PLAYER_REGEN);
     const hud = new GameHud();
     const sfx = new Sfx();

@@ -76,6 +76,17 @@ describe('PlayerMotor', () => {
     expect(motor.feet.x - x0).toBeCloseTo(4, 0);
   });
 
+  it('stops at the edge of the world and keeps its footing', () => {
+    const { motor } = setup();
+    motor.edge = 60;
+    motor.teleport(55, 0.05, -55);
+    run(motor, 3, 4, -4);
+    expect(motor.feet.x).toBe(60);
+    expect(motor.feet.z).toBe(-60);
+    expect(motor.feet.y).toBeCloseTo(0, 1);
+    expect(motor.grounded).toBe(true);
+  });
+
   it('never passes through a tree trunk', () => {
     const { motor } = setup();
     addFixed(rapier.ColliderDesc.cylinder(4, 0.4), 3, 4, 0);

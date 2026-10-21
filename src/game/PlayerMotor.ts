@@ -44,6 +44,9 @@ export class PlayerMotor {
   velY = 0;
   /** downward speed at the most recent landing (0 when none this step) */
   landingSpeed = 0;
+  /** feet stay within ±edge on x and z — past the terrain there is nothing
+   *  to stand on */
+  edge = Infinity;
 
   /** the capsule — shots from the eye start inside it and must skip it */
   readonly collider: RAPIER.Collider;
@@ -146,9 +149,7 @@ export class PlayerMotor {
     // ceiling: kill upward speed when the move was blocked from above
     if (this.velY > 0 && mv.y < dy * 0.5) this.velY = 0;
 
-    this.feet.x += mv.x;
-    this.feet.y += mv.y;
-    this.feet.z += mv.z;
+    this.move(mv);
 
     if (this.waterAt) {
       const floor = this.waterAt(this.feet.x, this.feet.z) + WADE_CLEAR - EYE_HEIGHT;
@@ -169,10 +170,14 @@ export class PlayerMotor {
     this.grounded = false;
     this.kcc.computeColliderMovement(this.collider, { x: vx * dt, y: vy * dt, z: vz * dt });
     const mv = this.kcc.computedMovement();
-    this.feet.x += mv.x;
-    this.feet.y += mv.y;
-    this.feet.z += mv.z;
+    this.move(mv);
     this.place();
+  }
+
+  private move(mv: Vec3): void {
+    this.feet.x = Math.min(this.edge, Math.max(-this.edge, this.feet.x + mv.x));
+    this.feet.y += mv.y;
+    this.feet.z = Math.min(this.edge, Math.max(-this.edge, this.feet.z + mv.z));
   }
 
   private place(): void {
