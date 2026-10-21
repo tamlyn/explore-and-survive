@@ -43,7 +43,11 @@ interface Setup {
   run: (seconds: number) => void;
 }
 
-function setup(spawns: EnemySpawn[], walls: { x: number; z: number; hx: number; hz: number }[] = []): Setup {
+function setup(
+  spawns: EnemySpawn[],
+  walls: { x: number; z: number; hx: number; hz: number }[] = [],
+  waterAt = (): number => -10,
+): Setup {
   const res = 257;
   physics = new Physics(rapier, { heights: new Float32Array(res * res), res, worldSize: res });
   const p = physics;
@@ -83,7 +87,7 @@ function setup(spawns: EnemySpawn[], walls: { x: number; z: number; hx: number; 
     shot: () => s.shots++,
     destroyed: () => {},
   };
-  const world = { physics: p, groundAt: () => 0, waterAt: () => -10 };
+  const world = { physics: p, groundAt: () => 0, waterAt };
   s.enemies = new Enemies(spawns, p, world, { create: () => new StubView() }, player, fx);
   return s;
 }
@@ -168,6 +172,23 @@ describe('Enemies', () => {
     // face to face, not overhead
     expect(Math.hypot(drone!.x, drone!.z)).toBeGreaterThan(0.6);
     expect(s.player.hp).toBeLessThan(100);
+  });
+
+  it("robots don't shoot each other", () => {
+    // a brawler just behind the player, where the gunner's misses go
+    const s = setup([gunner(0, -25), { kind: 'walker', x: 0, z: 1.5, roam: 0.1 }]);
+    s.run(0.1);
+    s.enemies.hear(s.player.aim);
+    s.run(10);
+    expect(s.shots).toBeGreaterThan(0);
+    expect(s.enemies.snapshot().every((r) => r.hp === ROBOTS[r.kind].hp)).toBe(true);
+  });
+
+  it('drones hover over water, not under it', () => {
+    const s = setup([{ kind: 'drone', x: 0, z: 60, roam: 5 }], [], () => 3);
+    s.run(4);
+    const [drone] = s.enemies.snapshot();
+    expect(drone!.y).toBeCloseTo(3 + ROBOTS.drone.hover, 1);
   });
 
   it('drones hover', () => {

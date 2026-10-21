@@ -44,10 +44,11 @@ export class Tracers {
   }
 
   spawn(from: Vec3, to: Vec3): void {
-    const i = this.next;
-    this.next = (this.next + 1) % POOL;
     D.set(to.x - from.x, to.y - from.y, to.z - from.z);
     const len = D.length();
+    if (len < 0.01) return;
+    const i = this.next;
+    this.next = (this.next + 1) % POOL;
     Q.setFromUnitVectors(Z, D.divideScalar(len));
     M.compose(P.set(from.x, from.y, from.z), Q, S.set(WIDTH, WIDTH, len));
     this.mesh.setMatrixAt(i, M);

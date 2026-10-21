@@ -19,7 +19,7 @@ import { formatCamString } from '../core/Params';
 import { Input } from '../core/Input';
 import type { EnemySpawn } from '../world/EnemyPlan';
 import { sampleGrid } from '../world/GridSample';
-import { Enemies, type EnemyTarget, type RobotViews } from './Enemies';
+import { Enemies, type EnemyTarget, type RobotViews, SLEEP_RADIUS } from './Enemies';
 import { FirstPersonRig } from './FirstPersonRig';
 import { GameHud } from './GameHud';
 import { Gunplay } from './Gunplay';
@@ -145,6 +145,8 @@ export class Game {
     };
     physics.tag(motor.collider, null, target);
     const { heights, res, worldSize } = world.terrain;
+    const groundAt = (x: number, z: number): number =>
+      physics.terrainY(x, z) ?? sampleGrid(heights, res, worldSize, x, z);
     const enemies = world.enemies
       ? new Enemies(
           world.enemies.spawns,
@@ -153,7 +155,7 @@ export class Game {
             physics,
             obstacles: world.obstacles,
             waterAt: world.waterAt,
-            groundAt: (x, z) => sampleGrid(heights, res, worldSize, x, z),
+            groundAt,
           },
           world.enemies.views,
           target,
@@ -171,8 +173,9 @@ export class Game {
       enemies?.tick(FIXED_DT);
       physics.step();
     });
+    // robots walk among the trees as far out as they stay awake
     const obstacles = world.obstacles
-      ? new ObstacleStreamer(physics, world.obstacles)
+      ? new ObstacleStreamer(physics, world.obstacles, enemies ? SLEEP_RADIUS + 6 : undefined)
       : null;
     // the gun is cosmetic: without its model, play still works
     await this.viewmodel.load().catch((e: unknown) => {
@@ -218,7 +221,8 @@ export class Game {
       input.endFrame();
       return;
     }
-    if (input.takePress('KeyV')) {
+    const dead = this.attached?.health.dead ?? false;
+    if (input.takePress('KeyV') && !dead) {
       if (this.modeV === 'play') this.setPose(this.getPose());
       else this.play();
     }
@@ -228,11 +232,13 @@ export class Game {
       const { player } = a;
       a.obstacles?.update(player.eye.x, player.eye.z);
       if (a.health.dead) {
+        input.takeLook(); // no turning the corpse, nor a snap on respawn
         this.whileDead(dt, a);
       } else {
         player.update(dt, input);
-        if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
+        // robots act inside the physics tick, so this frame may have killed
         if (a.health.dead) this.die(a);
+        else if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
       }
       a.rig.update(dt, player);
       const trunks = a.world.obstacles?.trunksNear(player.eye.x, player.eye.z, CANOPY_R) ?? 0;
@@ -301,6 +307,7 @@ export class Game {
     if (a.health.dead) {
       a.health.reset();
       a.hud.dead = false;
+      a.enemies?.forget();
     }
     this.viewmodel.reset();
     this.modeV = 'play';

@@ -11,7 +11,7 @@
 
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { hashCombine, Rng } from '../core/Seed';
-import type { EnemySpawn, RobotKind } from '../world/EnemyPlan';
+import { DRY_MARGIN, type EnemySpawn, type RobotKind } from '../world/EnemyPlan';
 import { type BrainWorld, EnemyBrain, type Pose } from './EnemyBrain';
 import { Health } from './Health';
 import type { Hittable, Physics } from './Physics';
@@ -23,8 +23,9 @@ import { spreadDirection } from './Weapon';
 
 /** robots wake within this of the player (m)… */
 const WAKE_RADIUS = 120;
-/** …and sleep beyond this */
-const SLEEP_RADIUS = 140;
+/** …and sleep beyond this; the trees and rocks they bump into must have
+ *  colliders this far out */
+export const SLEEP_RADIUS = 140;
 /** how often sleep and wake are checked (s) */
 const ROSTER_INTERVAL = 0.5;
 /** how often each robot looks for the player (s) */
@@ -71,6 +72,7 @@ export interface EnemyFx {
 }
 
 export interface EnemyWorld extends ShotWorld {
+  /** the terrain collider's surface */
   groundAt(x: number, z: number): number;
   waterAt(x: number, z: number): number;
 }
@@ -179,7 +181,10 @@ export class Enemies {
     }
     for (const r of this.awake.values()) {
       if (r.dead) {
-        if (r.spec.hover) r.wreck.y = Math.max(this.world.groundAt(r.wreck.x, r.wreck.z), r.wreck.y - FALL_RATE * dt);
+        if (r.spec.hover) {
+          const floor = Math.max(this.world.groundAt(r.wreck.x, r.wreck.z), this.world.waterAt(r.wreck.x, r.wreck.z));
+          r.wreck.y = Math.max(floor, r.wreck.y - FALL_RATE * dt);
+        }
         r.view.place(r.wreck.x, r.wreck.y, r.wreck.z, r.brain.yaw);
       } else {
         const f = r.motor.feet;
@@ -205,7 +210,8 @@ export class Enemies {
       const { move } = r.brain;
       if (r.spec.hover) {
         // cruise high, but come down to look the player in the eye
-        const ground = this.world.groundAt(f.x, f.z);
+        // over water, the surface is the ground
+        const ground = Math.max(this.world.groundAt(f.x, f.z), this.world.waterAt(f.x, f.z));
         const level = seen ? Math.max(ground + MIN_HOVER, seen.y - r.spec.eye) : ground + r.spec.hover;
         const climb = level - f.y;
         r.motor.fly(move.x, Math.max(-HOVER_RATE, Math.min(HOVER_RATE, climb * 3)), move.z, dt);
@@ -257,7 +263,8 @@ export class Enemies {
     );
     const range = attack.range * 1.5;
     const hit = traceShot(this.world, from, dir, range, r.motor.collider);
-    hit?.target?.hurt(attack.damage, from);
+    // robots don't shoot each other: a round into a comrade just sparks
+    if (hit?.target === this.target) this.target.hurt(attack.damage, from);
     const to = hit ?? { x: from.x + dir.x * range, y: from.y + dir.y * range, z: from.z + dir.z * range };
     this.fx.shot({ ...from }, { x: to.x, y: to.y, z: to.z }, hit);
   }
@@ -291,7 +298,10 @@ export class Enemies {
     const spec = ROBOTS[spawn.kind];
     const { rapier } = this.physics;
     const motor = new PlayerMotor(rapier, this.physics.world, null, spec);
-    const spot = motor.clearSpotNear(spawn.x, spawn.z, (x, z) => this.world.groundAt(x, z));
+    // lifted by what a capsule's rounded base needs to clear a slope at the
+    // steepest the controller climbs, so wide robots don't start in a hillside
+    const lift = spec.radius * 0.4;
+    const spot = motor.clearSpotNear(spawn.x, spawn.z, (x, z) => this.world.groundAt(x, z) + lift);
     motor.teleport(spot.x, spot.y + spec.hover, spot.z);
     const rng = new Rng(hashCombine(hashCombine(this.seed, index), this.wakes++));
     const brain = new EnemyBrain(spec, spawn, rng, this.brainWorld(spec, motor.collider));
@@ -315,7 +325,7 @@ export class Enemies {
     const { world } = this;
     return {
       // drones fly over water
-      dry: spec.hover ? () => true : (x, z) => world.waterAt(x, z) < world.groundAt(x, z) - 0.05,
+      dry: spec.hover ? () => true : (x, z) => world.waterAt(x, z) < world.groundAt(x, z) - DRY_MARGIN,
       clear: (x0, z0, x1, z1) => {
         const from = { x: x0, y: world.groundAt(x0, z0) + 0.8, z: z0 };
         const dx = x1 - x0;

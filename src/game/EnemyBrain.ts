@@ -239,7 +239,8 @@ export class EnemyBrain {
     }
     if (this.stuckFor > STUCK_TIME) {
       this.stuckFor = 0;
-      if (this.state === 'patrol') return false;
+      // only a hunt is worth working round an obstacle for
+      if (this.state !== 'hunt') return false;
       this.detour = DETOUR_TIME;
       this.detourSide = this.rng.chance(0.5) ? 1 : -1;
     }

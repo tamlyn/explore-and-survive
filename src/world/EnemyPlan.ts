@@ -39,6 +39,8 @@ const STRAY_COUNT = 30;
 const STRAY_ROAM = 40;
 /** strays keep this far from settlements, which have their own guards (m) */
 const STRAY_CLEAR = 80;
+/** dry land lies at least this far above any water (m) */
+export const DRY_MARGIN = 0.1;
 /** nothing starts this close to the player (m) */
 export const SAFE_RADIUS = 50;
 
@@ -53,7 +55,7 @@ function pick(rng: Rng, table: [RobotKind, number][]): RobotKind {
 }
 
 export function planEnemies(sites: RuinSite[], ground: Ground, seed: number, spawn: { x: number; z: number }): EnemySpawn[] {
-  const dry = (x: number, z: number): boolean => ground.water(x, z) < ground.height(x, z) - 0.1;
+  const dry = (x: number, z: number): boolean => ground.water(x, z) < ground.height(x, z) - DRY_MARGIN;
   const safe = (x: number, z: number): boolean => Math.hypot(x - spawn.x, z - spawn.z) > SAFE_RADIUS;
   const enemies: EnemySpawn[] = [];
 

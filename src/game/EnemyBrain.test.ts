@@ -141,6 +141,15 @@ describe('EnemyBrain', () => {
     expect(sim.x).toBeGreaterThan(3);
   });
 
+  it('gives up a search it can\'t get to', () => {
+    // a wall all the way across, between the robot and the noise
+    const blocked = (x: number): boolean => x > 2 && x < 3;
+    const sim = new Sim(ROBOTS.walker, 0, 0, open, blocked);
+    sim.brain.alert(10, 0);
+    sim.run(15);
+    expect(sim.brain.state).toBe('patrol');
+  });
+
   it('does nothing once dead', () => {
     const sim = new Sim(ROBOTS.walkerGun, 0, 0);
     sim.brain.die();
