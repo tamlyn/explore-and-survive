@@ -74,7 +74,7 @@ describe('traceShot', () => {
     const motor = new PlayerMotor(rapier, p.world);
     motor.teleport(0, 0, 0);
     p.step();
-    const hit = traceShot({ physics: p, shooter: motor.collider }, { x: 0, y: 1.7, z: 0 }, { x: 0, y: -1, z: 0 }, 100);
+    const hit = traceShot({ physics: p }, { x: 0, y: 1.7, z: 0 }, { x: 0, y: -1, z: 0 }, 100, motor.collider);
     expect(hit?.surface).toBe('ground');
     expect(hit?.y).toBeCloseTo(0, 4);
   });

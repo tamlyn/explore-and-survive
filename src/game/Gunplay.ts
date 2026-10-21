@@ -6,6 +6,7 @@
  * with a different viewmodel.
  */
 
+import type RAPIER from '@dimforge/rapier3d-compat';
 import { aimDirection } from '../core/CameraAim';
 import type { GameHud } from './GameHud';
 import type { Impacts } from './Impacts';
@@ -30,6 +31,8 @@ export class Gunplay {
   constructor(
     private readonly parts: GunplayParts,
     private readonly world: ShotWorld,
+    /** the player's capsule, which shots from the eye start inside */
+    private readonly shooter: RAPIER.Collider,
   ) {}
 
   set active(on: boolean) {
@@ -37,8 +40,9 @@ export class Gunplay {
     this.parts.hud.visible = on;
   }
 
-  /** before the camera rig, so recoil shows in this frame's view */
-  update(dt: number, input: PlayerInput, player: Player): void {
+  /** before the camera rig, so recoil shows in this frame's view; true
+   *  when a round was fired */
+  update(dt: number, input: PlayerInput, player: Player): boolean {
     const { weapon, viewmodel, sfx, hud } = this.parts;
     const event = weapon.update(dt, input.takePress('Mouse0'), input.takePress('KeyR'));
     if (event === 'fire') {
@@ -52,6 +56,7 @@ export class Gunplay {
       sfx.click(0.08);
     }
     hud.update(weapon);
+    return event === 'fire';
   }
 
   /** after the camera rig: the viewmodel follows the posed camera */
@@ -64,8 +69,14 @@ export class Gunplay {
     const moving = Math.min(player.speed / WALK_SPEED, 1);
     const spread = spec.spread * (1 + (MOVING_SPREAD - 1) * moving);
     const dir = spreadDirection(aimDirection(player.yaw, player.pitch), spread, Math.random(), Math.random());
-    const hit = traceShot(this.world, player.eye, dir, spec.range);
-    if (hit) this.parts.impacts.spawn(hit);
+    const hit = traceShot(this.world, player.eye, dir, spec.range, this.shooter);
+    if (hit) {
+      this.parts.impacts.spawn(hit);
+      if (hit.target) {
+        hit.target.hurt(spec.damage, player.eye);
+        this.parts.hud.hit();
+      }
+    }
     player.addAim(0, spec.recoil * (0.8 + Math.random() * 0.4));
   }
 }

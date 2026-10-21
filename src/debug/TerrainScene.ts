@@ -29,7 +29,9 @@ import { ObstacleField } from '../game/Obstacles';
 import { buildingBlocks, type Ground, planRuins } from '../world/RuinPlan';
 import { buildRuins } from '../world/Ruins';
 import { clearingTexture, settlementClearings, trail } from '../world/Clearing';
+import { planEnemies } from '../world/EnemyPlan';
 import { planProps } from '../world/PropPlan';
+import { RobotModels } from '../game/RobotModels';
 import { Props } from '../world/Props';
 import type { Box } from '../world/Box';
 import type { Surface } from '../game/Physics';
@@ -77,6 +79,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   const ablate = new Set(
     (new URLSearchParams(window.location.search).get('ablate') ?? '').split(','),
   );
+  const view = new URLSearchParams(window.location.search).get('view');
 
   // ruined settlements (?ablate=ruins): laid out on the CPU heights before
   // the scatter, which must leave their ground clear
@@ -89,6 +92,12 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   const ruinBlocks = ruinSites.map((site) => site.buildings.flatMap((b) => buildingBlocks(b, ground)));
   const props = planProps(ruinSites, ground, seed.sub('props'));
   engine.stats.counters['ruins.sites'] = ruinSites.length;
+  // robots (?ablate=enemies): guarding the settlements and roaming between
+  const enemySpawns =
+    hf.cpuHeights && !ablate.has('enemies') && view !== 'split'
+      ? planEnemies(ruinSites, ground, seed.sub('enemies'), spawn)
+      : [];
+  engine.stats.counters['enemies'] = enemySpawns.length;
 
   // vegetation/rock placement (Phase 5): GPU clustered-Poisson scatter +
   // canopy coverage map — BEFORE the probe field (probes ray-march the bare
@@ -145,7 +154,6 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   }
 
   ctx.progress(0.958, 'terrain: building tiles');
-  const view = new URLSearchParams(window.location.search).get('view');
   if (view === 'scatter') addScatterDebug(engine.scene, scatter);
   if (view === 'split' && hf.preErosion) {
     // erosion before/after: pre-erosion clay on the left, eroded on the right
@@ -230,6 +238,18 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     }
   }
 
+  const robotModels = enemySpawns.length
+    ? await RobotModels.load(
+        enemySpawns.map((e) => e.kind),
+        ablate.has('gi') ? null : gi,
+        canopyTex,
+      )
+    : null;
+  if (robotModels) {
+    engine.scene.add(robotModels.group);
+    engine.onUpdate(() => robotModels.update());
+  }
+
   // what the settlements put in the physics world — only what's drawn
   let structures: (Box & { surface: Surface })[] = [];
   if (ruinBlocks.length && view !== 'split') {
@@ -270,6 +290,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     shadowRig,
     ruinSites,
     props,
+    enemySpawns,
   };
 
   // GPU particles: snow/pollen/leaves riding the wind (?ablate=particles)
@@ -321,7 +342,9 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
       structures,
+      spawn: { x: spawn.x, z: spawn.z, yaw: SPAWN_YAW },
       ...(obstacles ? { obstacles } : {}),
+      ...(robotModels ? { enemies: { spawns: enemySpawns, views: robotModels } } : {}),
     };
   }
 

@@ -6,11 +6,17 @@
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { Box } from '../world/Box';
+import type { Vec3 } from './PlayerMotor';
 
 export type Rapier = typeof RAPIER;
 
 /** what a static collider is made of — drives impact effects */
 export type Surface = 'ground' | 'wood' | 'stone' | 'metal' | 'rubber';
+
+/** something shots can hurt: the player, a robot */
+export interface Hittable {
+  hurt(damage: number, from: Vec3): void;
+}
 
 export interface RayHit {
   x: number;
@@ -18,8 +24,9 @@ export interface RayHit {
   z: number;
   normal: { x: number; y: number; z: number };
   distance: number;
-  /** null for colliders added without a surface (the player, props) */
+  /** null for colliders added without a surface (the player) */
   surface: Surface | null;
+  target: Hittable | null;
 }
 
 /** CPU copy of the render heightfield: sample (i, j) sits at
@@ -64,6 +71,8 @@ export class Physics {
   private readonly terrain: RAPIER.Collider | null;
   /** collider handle → surface */
   private readonly surfaces = new Map<number, Surface>();
+  /** collider handle → who it hurts */
+  private readonly targets = new Map<number, Hittable>();
 
   constructor(
     readonly rapier: Rapier,
@@ -87,8 +96,19 @@ export class Physics {
   }
 
   removeCollider(collider: RAPIER.Collider): void {
-    this.surfaces.delete(collider.handle);
+    this.untag(collider);
     this.world.removeCollider(collider, false);
+  }
+
+  /** what a body's collider is made of, and who a shot into it hurts */
+  tag(collider: RAPIER.Collider, surface: Surface | null, target: Hittable | null = null): void {
+    if (surface) this.surfaces.set(collider.handle, surface);
+    if (target) this.targets.set(collider.handle, target);
+  }
+
+  untag(collider: RAPIER.Collider): void {
+    this.surfaces.delete(collider.handle);
+    this.targets.delete(collider.handle);
   }
 
   /** first solid hit along a ray; `dir` must be unit length */
@@ -109,6 +129,7 @@ export class Physics {
       normal: { x: hit.normal.x, y: hit.normal.y, z: hit.normal.z },
       distance: hit.timeOfImpact,
       surface: this.surfaces.get(hit.collider.handle) ?? null,
+      target: this.targets.get(hit.collider.handle) ?? null,
     };
   }
 

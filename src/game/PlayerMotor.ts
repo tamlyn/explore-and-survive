@@ -1,5 +1,6 @@
 /**
- * PlayerMotor — the player's physical body: a kinematic capsule moved by
+ * PlayerMotor — the player's physical body (robots reuse it with their own
+ * capsule): a kinematic capsule moved by
  * Rapier's character controller (slides along obstacles, steps over small
  * rocks, refuses walls steeper than MAX_CLIMB, snaps down gentle descents).
  * Gravity and jumping are integrated here; horizontal intent comes from the
@@ -13,8 +14,6 @@ type Rapier = typeof RAPIER;
 
 export const CAPSULE_RADIUS = 0.3;
 export const CAPSULE_HALF_HEIGHT = 0.6;
-/** feet → capsule centre */
-const CENTER_Y = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
 export const EYE_HEIGHT = 1.7;
 export const GRAVITY = 22; // m/s² — game-feel gravity, not 9.81
 export const JUMP_V0 = 7.0; // → ~1.1 m apex
@@ -32,6 +31,13 @@ export interface Vec3 {
   z: number;
 }
 
+export interface Capsule {
+  radius: number;
+  halfHeight: number;
+}
+
+const PLAYER: Capsule = { radius: CAPSULE_RADIUS, halfHeight: CAPSULE_HALF_HEIGHT };
+
 export class PlayerMotor {
   readonly feet: Vec3 = { x: 0, y: 0, z: 0 };
   grounded = false;
@@ -43,15 +49,19 @@ export class PlayerMotor {
   readonly collider: RAPIER.Collider;
   private readonly body: RAPIER.RigidBody;
   private readonly kcc: RAPIER.KinematicCharacterController;
+  /** feet → capsule centre */
+  private readonly centerY: number;
 
   constructor(
     rapier: Rapier,
     private readonly world: RAPIER.World,
     private readonly waterAt: WaterProbe | null = null,
+    capsule: Capsule = PLAYER,
   ) {
+    this.centerY = capsule.halfHeight + capsule.radius;
     this.body = world.createRigidBody(rapier.RigidBodyDesc.kinematicPositionBased());
     this.collider = world.createCollider(
-      rapier.ColliderDesc.capsule(CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS),
+      rapier.ColliderDesc.capsule(capsule.halfHeight, capsule.radius),
       this.body,
     );
     this.kcc = world.createCharacterController(0.02);
@@ -86,7 +96,7 @@ export class PlayerMotor {
   private fits(feet: Vec3): boolean {
     let blocked = false;
     this.world.intersectionsWithShape(
-      { x: feet.x, y: feet.y + CENTER_Y, z: feet.z },
+      { x: feet.x, y: feet.y + this.centerY, z: feet.z },
       { x: 0, y: 0, z: 0, w: 1 },
       this.collider.shape,
       () => {
@@ -107,7 +117,7 @@ export class PlayerMotor {
     this.feet.z = z;
     this.velY = 0;
     this.grounded = false;
-    this.body.setTranslation({ x, y: y + CENTER_Y, z }, true);
+    this.body.setTranslation({ x, y: y + this.centerY, z }, true);
     this.world.propagateModifiedBodyPositionsToColliders();
   }
 
@@ -149,9 +159,26 @@ export class PlayerMotor {
       }
     }
 
+    this.place();
+  }
+
+  /** advance one fixed step airborne: no gravity, any direction (m/s) */
+  fly(vx: number, vy: number, vz: number, dt: number): void {
+    this.landingSpeed = 0;
+    this.velY = 0;
+    this.grounded = false;
+    this.kcc.computeColliderMovement(this.collider, { x: vx * dt, y: vy * dt, z: vz * dt });
+    const mv = this.kcc.computedMovement();
+    this.feet.x += mv.x;
+    this.feet.y += mv.y;
+    this.feet.z += mv.z;
+    this.place();
+  }
+
+  private place(): void {
     this.body.setNextKinematicTranslation({
       x: this.feet.x,
-      y: this.feet.y + CENTER_Y,
+      y: this.feet.y + this.centerY,
       z: this.feet.z,
     });
   }

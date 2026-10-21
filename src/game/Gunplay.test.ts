@@ -16,7 +16,7 @@ afterEach(() => {
   physics = null;
 });
 
-const SPEC: WeaponSpec = { fireInterval: 0.1, magazine: 2, reloadTime: 1, range: 50, spread: 0, recoil: 0.02 };
+const SPEC: WeaponSpec = { fireInterval: 0.1, magazine: 2, reloadTime: 1, range: 50, damage: 10, spread: 0, recoil: 0.02 };
 
 class Clicks implements PlayerInput {
   presses = new Set<string>();
@@ -47,9 +47,9 @@ function setup(): { gunplay: Gunplay; player: Player; impacts: Impact[]; parts: 
     viewmodel: { fire: vi.fn(), update: vi.fn(), scene: { visible: false } },
     impacts: { spawn: (hit: Impact) => impacts.push(hit), update: vi.fn() },
     sfx: { shot: vi.fn(), click: vi.fn() },
-    hud: { update: vi.fn(), visible: false },
+    hud: { update: vi.fn(), hit: vi.fn(), visible: false },
   } as unknown as GunplayParts;
-  const gunplay = new Gunplay(parts, { physics: p, shooter: motor.collider });
+  const gunplay = new Gunplay(parts, { physics: p }, motor.collider);
   return { gunplay, player, impacts, parts, input: new Clicks() };
 }
 
@@ -65,6 +65,19 @@ describe('Gunplay', () => {
     expect(player.pitch).toBeGreaterThan(0);
     expect(parts.viewmodel.fire).toHaveBeenCalledOnce();
     expect(parts.sfx.shot).toHaveBeenCalledOnce();
+  });
+
+  it('hurts what it hits, and marks the hit', () => {
+    const { gunplay, player, parts, input } = setup();
+    const hurt = vi.fn();
+    // something hittable 5 m ahead, in front of the tree
+    const body = physics!.world.createCollider(rapier.ColliderDesc.ball(0.5).setTranslation(0, player.eye.y, -5));
+    physics!.tag(body, 'metal', { hurt });
+    physics!.step();
+    input.presses.add('Mouse0');
+    gunplay.update(1 / 60, input, player);
+    expect(hurt).toHaveBeenCalledWith(10, player.eye);
+    expect(parts.hud.hit).toHaveBeenCalledOnce();
   });
 
   it('clicks instead of firing when empty', () => {

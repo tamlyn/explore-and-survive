@@ -6,6 +6,7 @@ const SPEC: WeaponSpec = {
   magazine: 3,
   reloadTime: 1,
   range: 100,
+  damage: 10,
   spread: 0.01,
   recoil: 0.01,
 };

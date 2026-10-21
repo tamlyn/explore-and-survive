@@ -1,7 +1,8 @@
 /**
  * Smoke test — boots the default game spawn and checks the player actually
- * plays: starts in play mode, walking moves them, the eye stays at head
- * height above the ground, the gun fires and reloads, and nothing throws.
+ * plays: starts in play mode, the world has ruins and robots, walking moves
+ * them, the eye stays at head height above the ground, the gun fires and
+ * reloads, and nothing throws.
  * Needs the dev server on :5173.
  *
  *   npm run smoke
@@ -31,6 +32,8 @@ check((await page.evaluate(() => window.__laas.error)) === null, 'boots without 
 check(logs.some((l) => l.includes('control: play')), 'starts in play mode');
 const sites = (await page.evaluate('window.__laasDbg.ruinSites.length')) as number;
 check(sites > 0, `ruins stand in the world (${sites} sites)`);
+const robots = (await page.evaluate('window.__laasDbg.enemySpawns.length')) as number;
+check(robots > sites, `robots guard the settlements and roam (${robots} planned)`);
 await page.waitForTimeout(1000);
 
 // a string, not a closure: tsx's keepNames wraps named functions in a

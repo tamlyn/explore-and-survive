@@ -12,6 +12,8 @@ export interface WeaponSpec {
   reloadTime: number;
   /** m */
   range: number;
+  /** hit points per round */
+  damage: number;
   /** cone half-angle (rad) standing still; moving widens it */
   spread: number;
   /** upward aim kick per shot (rad) */
@@ -23,6 +25,7 @@ export const PISTOL: WeaponSpec = {
   magazine: 12,
   reloadTime: 1.3,
   range: 200,
+  damage: 25,
   spread: 0.004,
   recoil: 0.016,
 };

@@ -1,10 +1,19 @@
 /**
- * Sfx — gun sounds synthesised with Web Audio (no sample files yet). The
+ * Sfx — game sounds synthesised with Web Audio (no sample files yet). The
  * context is created on first use: browsers only allow audio after a user
- * gesture, and the first shot is one.
+ * gesture, and the first shot is one. Sounds from out in the world fade with
+ * distance and pan by bearing from the listener.
  */
 
+import type { Vec3 } from './PlayerMotor';
+
+/** a world sound halves in loudness this far away (m) */
+const HALF_DISTANCE = 15;
+
 export class Sfx {
+  /** where the player hears from; yaw 0 looks −z */
+  readonly listener = { x: 0, z: 0, yaw: 0 };
+
   private ctx: AudioContext | null = null;
   private out: GainNode | null = null;
   private noise: AudioBuffer | null = null;
@@ -43,6 +52,65 @@ export class Sfx {
     src.connect(hp).connect(envelope(ctx, t, 0.5, 0.03)).connect(this.output());
     src.start(t, Math.random() * 0.5);
     src.stop(t + 0.05);
+  }
+
+  /** a robot's shot: a buzzing zap */
+  zap(at: Vec3): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1400, t);
+    osc.frequency.exponentialRampToValueAtTime(180, t + 0.12);
+    osc.connect(envelope(ctx, t, 0.35, 0.14)).connect(this.placed(at));
+    osc.start(t);
+    osc.stop(t + 0.16);
+  }
+
+  /** a robot destroyed: a falling whine over a burst of static */
+  powerDown(at: Vec3): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.7);
+    const out = this.placed(at);
+    osc.connect(envelope(ctx, t, 0.25, 0.8)).connect(out);
+    osc.start(t);
+    osc.stop(t + 0.8);
+    const fizz = this.noiseSource(ctx);
+    fizz.connect(envelope(ctx, t, 0.5, 0.3)).connect(out);
+    fizz.start(t, Math.random() * 0.5);
+    fizz.stop(t + 0.35);
+  }
+
+  /** the player taking a hit: a dull thud */
+  hurt(): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.frequency.setValueAtTime(90, t);
+    osc.frequency.exponentialRampToValueAtTime(35, t + 0.2);
+    osc.connect(envelope(ctx, t, 0.9, 0.25)).connect(this.output());
+    osc.start(t);
+    osc.stop(t + 0.3);
+  }
+
+  /** a gain and pan for a sound at `at`, relative to the listener */
+  private placed(at: Vec3): AudioNode {
+    const ctx = this.context();
+    const { x, z, yaw } = this.listener;
+    const dx = at.x - x;
+    const dz = at.z - z;
+    const d = Math.hypot(dx, dz);
+    const gain = ctx.createGain();
+    gain.gain.value = 1 / (1 + d / HALF_DISTANCE);
+    const pan = ctx.createStereoPanner();
+    // right of the listener is (cos yaw, −sin yaw)
+    pan.pan.value = d > 0.1 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / d : 0;
+    gain.connect(pan).connect(this.output());
+    return gain;
   }
 
   /** crack and thump overlap at their peaks; headroom so they don't clip */

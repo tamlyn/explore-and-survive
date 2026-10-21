@@ -79,6 +79,7 @@ async function boot(): Promise<void> {
     bootUI.set(0.96, 'physics: building colliders');
     const t0 = performance.now();
     await game.attachWorld(ctx.gameWorld);
+    Object.assign((window as unknown as { __laasDbg?: object }).__laasDbg ?? {}, { game });
     // eslint-disable-next-line no-console
     console.log(`[laas] physics ready in ${(performance.now() - t0).toFixed(0)} ms`);
   }
