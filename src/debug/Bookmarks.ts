@@ -5,8 +5,9 @@
  *
  * Keys 1–9 jump to a bookmark (pose + ToD); ?shot=N boots into one.
  * ?fly=1 (or key F) runs a looping ~90 s Catmull-Rom flythrough through
- * a subset of the bookmarks at a fixed golden-hour ToD; the fly camera's
- * ground/water clamps keep the path out of terrain and water.
+ * a subset of the bookmarks at a fixed golden-hour ToD. The curve between
+ * waypoints knows nothing of the hills, so it is lifted where it would cut
+ * through them, easing up beforehand and down after.
  */
 
 import type { PerspectiveCamera } from 'three';
@@ -39,6 +40,30 @@ export const BOOKMARKS: Bookmark[] = [
   { name: 'Lakeshore golden', x: -1400, z: 1250, alt: 2.5, yaw: 3.14, pitch: -0.12, tod: 18.5 },
   { name: 'Valley network aerial', x: -600, z: 700, alt: 260, yaw: -0.6, pitch: -0.5, tod: 17.5 },
 ];
+
+/** how far the flythrough keeps above the ground (m) */
+const CLEARANCE = 4;
+/** how far ahead it starts climbing over a rise, and after it comes down (m) */
+const LIFT_EASE = 400;
+/** the curve's lift is sampled this often (m) */
+const LIFT_STEP = 2;
+
+/**
+ * How much to raise each of a path's evenly spaced points so all of them
+ * clear `floor`, eased in and out over `ease` points either side.
+ */
+export function pathLift(points: { x: number; y: number; z: number }[], floor: (x: number, z: number) => number, ease: number): Float32Array {
+  const need = points.map((p) => Math.max(0, floor(p.x, p.z) - p.y));
+  const lift = new Float32Array(points.length);
+  need.forEach((n, j) => {
+    if (n === 0) return;
+    for (let i = Math.max(0, j - ease); i <= Math.min(points.length - 1, j + ease); i++) {
+      const t = 1 - Math.abs(i - j) / (ease + 1);
+      lift[i] = Math.max(lift[i] as number, n * t * t * (3 - 2 * t));
+    }
+  });
+  return lift;
+}
 
 function poseY(hf: Heightfield, b: Bookmark): number {
   const ground = hf.heightAtCpu(b.x, b.z) + b.alt;
@@ -87,6 +112,7 @@ export function installBookmarks(
     private active = false;
     private t = 0;
     private curve: CatmullRomCurve3 | null = null;
+    private lift: Float32Array = new Float32Array(1);
 
     toggle(): void {
       this.active = !this.active;
@@ -98,6 +124,10 @@ export function installBookmarks(
           'centripetal',
           0.5,
         );
+        const n = Math.ceil(this.curve.getLength() / LIFT_STEP);
+        const floor = (x: number, z: number): number =>
+          Math.max(hf.heightAtCpu(x, z) + CLEARANCE, hf.waterYAtCpu(x, z) + 0.6);
+        this.lift = pathLift(this.curve.getSpacedPoints(n), floor, Math.round(LIFT_EASE / LIFT_STEP));
       }
       if (!this.active) this.t = 0;
     }
@@ -107,6 +137,10 @@ export function installBookmarks(
       this.t = (this.t + dt / FLY_SECONDS) % 1;
       const u = this.t;
       const p = this.curve.getPointAt(u);
+      const k = u * (this.lift.length - 1);
+      const k0 = Math.floor(k);
+      const l0 = this.lift[k0] as number;
+      p.y += l0 + ((this.lift[Math.min(k0 + 1, this.lift.length - 1)] as number) - l0) * (k - k0);
       cam.position.copy(p);
       // yaw/pitch: linear over the waypoint list (yaws authored unwrapped)
       const seg = u * (TOUR.length - 1);
