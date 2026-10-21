@@ -47,6 +47,13 @@ import { sampleGrid } from './GridSample';
 
 export type ProgressFn = (p: number, msg: string) => void;
 
+/** how far dry land stays above the water beside it (m) */
+const SHORE_CLEAR = 0.05;
+/** a raised bank falls this much per 2 m water cell (~22°), for so many cells */
+const BANK_DROP = 0.8;
+const BANK_CELLS = 6;
+const NO_BANK = -1e4;
+
 export class Heightfield {
   readonly cfg: QualityConfig;
   readonly mp: MacroParams;
@@ -172,7 +179,7 @@ export class Heightfield {
     hf.waterYFar = await Heightfield.reduceWaterY(renderer, hf.waterY, cfg.simRes, 8);
 
     progress(0.7, 'terrain: composing eroded field');
-    await hf.composeEroded(renderer, synthSim.height, erosion.eroded);
+    await hf.composeEroded(renderer, synthSim.height, erosion.eroded, hf.waterY);
 
     progress(0.82, 'terrain: deriving maps');
     await hf.rebuildDerivedMaps(renderer);
@@ -432,15 +439,23 @@ export class Heightfield {
    * height ← upsample(eroded_sim) + (height_full − upsample(preSim)).
    * Keeps full-res synthesis micro-detail riding on the eroded macro field.
    * Also snapshots the pre-erosion full-res height for the split view.
+   *
+   * Ponds hold their fill level from BEFORE the river carve and talus relax,
+   * which can cut their rims and outlets below it; the bilinear water sheet
+   * then ramps down through the air to the dry ground beside it. So the
+   * ground beside water rises to its level and falls away as a bank — where
+   * the rim wore away, rather than draining ponds.
    */
   private async composeEroded(
     renderer: Renderer,
     preSim: FloatBuffer,
     erodedSim: FloatBuffer,
+    waterY: FloatBuffer,
   ): Promise<void> {
     const res = this.res;
     const simRes = this.simRes;
     const pre = instancedArray(res * res, 'float');
+    const bank = await Heightfield.buildBank(renderer, erodedSim, waterY, simRes);
     const kernel = Fn(() => {
       const i = instanceIndex;
       If(i.greaterThanEqual(res * res), () => {
@@ -454,11 +469,70 @@ export class Heightfield {
       const g = uvToGrid(uv, simRes);
       const macroEroded = bilerpFloatBuffer(erodedSim, simRes, g);
       const macroPre = bilerpFloatBuffer(preSim, simRes, g);
-      this.height.element(i).assign(macroEroded.add(h.sub(macroPre)));
+      const composed = macroEroded.add(h.sub(macroPre));
+      // amid water the bed keeps its detail; elsewhere a corner far from
+      // water drags the bilinear bank far below the ground, lifting nothing
+      const c = floor(clamp(g, 0, simRes - 1));
+      const x0 = c.x.toInt();
+      const y0 = c.y.toInt();
+      const x1 = clamp(c.x.add(1), 0, simRes - 1).toInt();
+      const y1 = clamp(c.y.add(1), 0, simRes - 1).toInt();
+      const corners = [y0.mul(simRes).add(x0), y0.mul(simRes).add(x1), y1.mul(simRes).add(x0), y1.mul(simRes).add(x1)];
+      const allWet = corners.map((j) => waterY.element(j).greaterThanEqual(erodedSim.element(j))).reduce((a, b) => a.and(b));
+      const lifted = composed.max(bilerpFloatBuffer(bank, simRes, g).add(SHORE_CLEAR));
+      this.height.element(i).assign(allWet.select(composed, lifted));
     })().compute(res * res);
     kernel.setName('erosionCompose');
     await renderer.computeAsync(kernel);
     this.preErosion = pre;
+  }
+
+  /**
+   * The least ground height that holds the water in, per water cell: a wet
+   * cell's own level, spreading over dry cells and falling BANK_DROP per
+   * cell; NO_BANK beyond BANK_CELLS of water.
+   */
+  private static async buildBank(
+    renderer: Renderer,
+    bed: FloatBuffer,
+    waterY: FloatBuffer,
+    res: number,
+  ): Promise<FloatBuffer> {
+    const a = instancedArray(res * res, 'float');
+    const b = instancedArray(res * res, 'float');
+    const initK = Fn(() => {
+      const i = instanceIndex;
+      If(i.greaterThanEqual(res * res), () => {
+        Return();
+      });
+      const w = waterY.element(i);
+      a.element(i).assign(w.greaterThanEqual(bed.element(i)).select(w, float(NO_BANK)));
+    })().compute(res * res);
+    initK.setName('bankInit');
+    const mkSpread = (src: FloatBuffer, dst: FloatBuffer): ComputeNode => {
+      const k = Fn(() => {
+        const i = instanceIndex;
+        If(i.greaterThanEqual(res * res), () => {
+          Return();
+        });
+        const x = float(i.mod(res));
+        const y = float(i.div(res));
+        const level = src.element(i).toVar();
+        for (const [ox, oy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
+          const nx = clamp(x.add(ox), 0, res - 1).toInt();
+          const ny = clamp(y.add(oy), 0, res - 1).toInt();
+          level.assign(level.max(src.element(ny.mul(res).add(nx)).sub(BANK_DROP * Math.hypot(ox, oy))));
+        }
+        const wet = waterY.element(i).greaterThanEqual(bed.element(i));
+        dst.element(i).assign(wet.select(src.element(i), level));
+      })().compute(res * res);
+      k.setName('bankSpread');
+      return k;
+    };
+    const ab = mkSpread(a, b);
+    const ba = mkSpread(b, a);
+    await renderer.computeAsync([initK, ...Array.from({ length: BANK_CELLS }, (_, n) => (n % 2 ? ba : ab))]);
+    return BANK_CELLS % 2 ? b : a;
   }
 
   /** height buffer → height texture + central-difference normals/slope */
