@@ -28,9 +28,6 @@ class StubView implements RobotView {
   }
   pose(): void {}
   update(): void {}
-  muzzle(): boolean {
-    return false;
-  }
   dispose(): void {
     StubView.live--;
   }
@@ -40,6 +37,8 @@ interface Setup {
   enemies: Enemies;
   player: EnemyTarget & { hp: number; at: (x: number, z: number) => void };
   shots: number;
+  /** where the last round left from */
+  lastFrom: Vec3 | null;
   run: (seconds: number) => void;
 }
 
@@ -75,6 +74,7 @@ function setup(
     enemies: null as unknown as Enemies,
     player,
     shots: 0,
+    lastFrom: null,
     run: (seconds) => {
       for (let t = 0; t < seconds; t += DT) {
         s.enemies.update(DT, player.aim);
@@ -84,7 +84,10 @@ function setup(
     },
   };
   const fx: EnemyFx = {
-    shot: () => s.shots++,
+    shot: (from) => {
+      s.shots++;
+      s.lastFrom = from;
+    },
     destroyed: () => {},
   };
   const world = { physics: p, groundAt: () => 0, waterAt };
@@ -113,6 +116,24 @@ describe('Enemies', () => {
     s.run(15);
     expect(s.shots).toBeGreaterThan(5);
     expect(s.player.hp).toBeLessThan(100);
+  });
+
+  it('rounds leave from the gun, not from somewhere above it', () => {
+    for (const kind of ['walkerGun', 'bruteGun', 'droneGun'] as const) {
+      const s = setup([{ kind, x: 0, z: -20, roam: 0.1 }]);
+      s.run(0.1);
+      s.enemies.hear(s.player.aim);
+      s.run(10);
+      const [robot] = s.enemies.snapshot();
+      const from = s.lastFrom!;
+      expect(Math.hypot(from.x - robot!.x, from.z - robot!.z)).toBeLessThan(1.5);
+      expect(from.y - robot!.y).toBeGreaterThan(0.5);
+      expect(from.y - robot!.y).toBeLessThan(2.5);
+      // ahead of the robot, towards the player
+      expect(from.z).toBeGreaterThan(robot!.z);
+      physics?.dispose();
+      physics = null;
+    }
   });
 
   it('a wall gives cover', () => {

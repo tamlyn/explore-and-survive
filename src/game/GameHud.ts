@@ -1,7 +1,7 @@
 /**
  * GameHud — crosshair (which flashes on a hit), ammo count, health bar, a
- * red flash when hurt, the death notice and brief toasts, shown while
- * playing.
+ * red flash and an arc pointing at the attacker when hurt, the death notice
+ * and brief toasts, shown while playing.
  */
 
 import type { Weapon } from './Weapon';
@@ -10,6 +10,7 @@ import type { Weapon } from './Weapon';
 const HIT_TIME = 0.15;
 const HURT_TIME = 0.6;
 const TOAST_TIME = 1.5;
+const POINTER_TIME = 1.2;
 
 function div(css: string[], parent?: HTMLElement): HTMLDivElement {
   const d = document.createElement('div');
@@ -24,6 +25,8 @@ export class GameHud {
     ['position:absolute', 'inset:0', 'opacity:0', 'background:radial-gradient(ellipse at center, transparent 45%, rgba(170,0,0,0.75) 100%)'],
     this.root,
   );
+  /** turned to face the attacker; its arc sits at the top of a ring */
+  private readonly pointer = div(['position:absolute', 'left:50%', 'top:50%', 'width:0', 'height:0', 'opacity:0'], this.root);
   private readonly dot = div(
     [
       'position:absolute', 'left:50%', 'top:50%', 'width:4px', 'height:4px', 'margin:-2px 0 0 -2px',
@@ -68,8 +71,16 @@ export class GameHud {
   private shownHp = -1;
   private hitLeft = 0;
   private hurtLeft = 0;
+  private pointerLeft = 0;
 
   constructor() {
+    div(
+      [
+        'position:absolute', 'left:-110px', 'top:-110px', 'width:220px', 'height:220px', 'border-radius:50%',
+        'box-sizing:border-box', 'border:6px solid transparent', 'border-top-color:rgba(220,40,30,0.9)',
+      ],
+      this.pointer,
+    );
     this.notice.textContent = 'You died';
     document.body.append(this.root);
   }
@@ -96,8 +107,12 @@ export class GameHud {
     this.hitLeft = HIT_TIME;
   }
 
-  hurt(): void {
+  /** `bearing` is where the blow came from: radians clockwise from
+   *  straight ahead */
+  hurt(bearing: number): void {
     this.hurtLeft = HURT_TIME;
+    this.pointerLeft = POINTER_TIME;
+    this.pointer.style.transform = `rotate(${bearing}rad)`;
   }
 
   /** a brief message, e.g. a setting changed */
@@ -116,6 +131,8 @@ export class GameHud {
     }
     this.hitLeft = Math.max(0, this.hitLeft - dt);
     this.hurtLeft = Math.max(0, this.hurtLeft - dt);
+    this.pointerLeft = Math.max(0, this.pointerLeft - dt);
+    this.pointer.style.opacity = String(Math.min(1, this.pointerLeft / 0.4));
     this.toastLeft = Math.max(0, this.toastLeft - dt);
     this.toastBox.style.opacity = String(Math.min(1, this.toastLeft / 0.3));
     this.marker.style.opacity = String(this.hitLeft > 0 ? 1 : 0);

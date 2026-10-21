@@ -19,6 +19,12 @@ export interface Attack {
   spread: number;
 }
 
+/** where a gunman's rounds leave from, ahead of and above its feet (m) */
+export interface Muzzle {
+  forward: number;
+  up: number;
+}
+
 export interface RobotSpec {
   hp: number;
   /** m/s */
@@ -38,17 +44,37 @@ export interface RobotSpec {
   /** m */
   sight: number;
   attack: Attack;
+  /** gunmen only */
+  muzzle?: Muzzle;
 }
 
 const walker = { walk: 1.6, run: 5, turn: 4, scale: 1.6, radius: 0.6, halfHeight: 0.1, hover: 0, eye: 0.85, sight: 45 };
 const brute = { walk: 1.2, run: 3.2, turn: 2.2, scale: 1.7, radius: 0.75, halfHeight: 0.3, hover: 0, eye: 1.1, sight: 45 };
 const drone = { walk: 2, run: 6, turn: 5, scale: 1.4, radius: 0.5, halfHeight: 0.05, hover: 2.2, eye: 0.5, sight: 40 };
 
+/** a barrel tip measured on the source model (model units, facing +z) */
+const barrel = (forward: number, up: number, scale: number): Muzzle => ({ forward: forward * scale, up: up * scale });
+
 export const ROBOTS: Record<RobotKind, RobotSpec> = {
   walker: { ...walker, hp: 50, attack: { ranged: false, range: 1.7, damage: 15, interval: 1.2, windup: 0.45, spread: 0 } },
-  walkerGun: { ...walker, hp: 60, attack: { ranged: true, range: 35, damage: 7, interval: 0.9, windup: 0.12, spread: 0.035 } },
+  walkerGun: {
+    ...walker,
+    hp: 60,
+    attack: { ranged: true, range: 35, damage: 7, interval: 0.9, windup: 0.12, spread: 0.035 },
+    muzzle: barrel(0.59, 0.88, walker.scale),
+  },
   brute: { ...brute, hp: 160, attack: { ranged: false, range: 2.3, damage: 30, interval: 1.8, windup: 0.6, spread: 0 } },
-  bruteGun: { ...brute, hp: 180, attack: { ranged: true, range: 45, damage: 14, interval: 1.6, windup: 0.12, spread: 0.03 } },
+  bruteGun: {
+    ...brute,
+    hp: 180,
+    attack: { ranged: true, range: 45, damage: 14, interval: 1.6, windup: 0.12, spread: 0.03 },
+    muzzle: barrel(0.31, 1.21, brute.scale),
+  },
   drone: { ...drone, hp: 30, attack: { ranged: false, range: 1.6, damage: 8, interval: 0.9, windup: 0.35, spread: 0 } },
-  droneGun: { ...drone, hp: 35, attack: { ranged: true, range: 30, damage: 5, interval: 0.6, windup: 0.12, spread: 0.05 } },
+  droneGun: {
+    ...drone,
+    hp: 35,
+    attack: { ranged: true, range: 30, damage: 5, interval: 0.6, windup: 0.12, spread: 0.05 },
+    muzzle: barrel(0.81, 0.87, drone.scale),
+  },
 };

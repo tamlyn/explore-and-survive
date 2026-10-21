@@ -14,6 +14,7 @@
  */
 
 import type { PerspectiveCamera, Scene } from 'three';
+import { bearing } from '../core/CameraAim';
 import { FlyCamera } from '../core/FlyCamera';
 import type { CamPose } from '../core/Hooks';
 import { formatCamString } from '../core/Params';
@@ -137,10 +138,10 @@ export class Game {
       get alive() {
         return !health.dead;
       },
-      hurt: (damage) => {
+      hurt: (damage, from) => {
         if (health.dead) return;
         health.hurt(damage);
-        hud.hurt();
+        hud.hurt(bearing(from.x, from.z, motor.feet.x, motor.feet.z, player?.yaw ?? 0));
         sfx.hurt();
       },
     };

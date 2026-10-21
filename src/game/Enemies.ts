@@ -55,8 +55,6 @@ export interface RobotView {
   place(x: number, y: number, z: number, yaw: number): void;
   pose(p: Pose): void;
   update(dt: number): void;
-  /** the gun's muzzle in world space, if this robot carries one */
-  muzzle(out: Vec3): boolean;
   dispose(): void;
 }
 
@@ -105,6 +103,18 @@ class Robot implements Hittable {
 
   hurt(damage: number, from: Vec3): void {
     this.onHurt(this, damage, from);
+  }
+
+  /** where rounds leave from: the gun's barrel tip, or the eye */
+  muzzle(out: Vec3): Vec3 {
+    const m = this.spec.muzzle;
+    if (!m) return this.eye(out);
+    const f = this.motor.feet;
+    // forward is (−sin yaw, −cos yaw)
+    out.x = f.x - Math.sin(this.brain.yaw) * m.forward;
+    out.y = f.y + m.up;
+    out.z = f.z - Math.cos(this.brain.yaw) * m.forward;
+    return out;
   }
 
   /** the sensor: eye height above the capsule's base */
@@ -249,7 +259,7 @@ export class Enemies {
       }
       return;
     }
-    const from = r.view.muzzle(MUZZLE) ? MUZZLE : r.eye(MUZZLE);
+    const from = r.muzzle(MUZZLE);
     const dx = aim.x - from.x;
     const dy = aim.y - from.y;
     const dz = aim.z - from.z;
