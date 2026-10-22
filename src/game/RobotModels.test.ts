@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { AnimationMixer, Box3, MeshStandardMaterial, type Object3D, SkinnedMesh, Vector3 } from 'three';
+import { AnimationMixer, Box3, type BufferAttribute, MeshStandardMaterial, type Object3D, SkinnedMesh, Vector3 } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { describe, expect, it } from 'vitest';
 import type { RobotKind } from '../world/EnemyPlan';
@@ -54,6 +54,12 @@ describe('prepareRobot', () => {
         glowing += (m.geometry.getAttribute('_glow').array as Float32Array).filter((g) => g > 0).length;
       }
       expect(glowing).toBeGreaterThan(0);
+      // weathering goes by height in model units: feet on the ground
+      const rest = new Box3().setFromBufferAttribute(meshes[0]!.geometry.getAttribute('_rest') as BufferAttribute);
+      expect(rest.min.y).toBeGreaterThan(-0.3);
+      expect(rest.min.y).toBeLessThan(0.3);
+      expect(rest.max.y).toBeGreaterThan(0.6);
+      expect(rest.max.y).toBeLessThan(1.6);
 
       const box = posedBounds(gltf.scene, gltf);
       // merging must not move a vertex

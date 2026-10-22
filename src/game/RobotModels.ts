@@ -2,7 +2,9 @@
  * Robot models — the Quaternius robots as published. At load each robot's
  * parts are merged into one skinned mesh with their flat material colours
  * baked into vertex colours, so a robot is a single draw call with a shared
- * material, and eyes and status lights glow from a baked mask.
+ * material, and eyes and status lights glow from a baked mask. Each vertex
+ * also keeps where it stands at rest, in model units, for RobotMaterial to
+ * weather by.
  * Every awake robot gets its own skeleton and animation mixer.
  */
 
@@ -29,8 +31,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { attribute, vertexColor } from 'three/tsl';
-import { MeshStandardNodeMaterial, type StorageTexture } from 'three/webgpu';
+import type { StorageTexture } from 'three/webgpu';
 import brute from '../../assets/models/robots/brute.glb?url';
 import bruteGun from '../../assets/models/robots/bruteGun.glb?url';
 import drone from '../../assets/models/robots/drone.glb?url';
@@ -42,12 +43,11 @@ import { lightWithProbes } from '../render/ProbeLighting';
 import type { RobotKind } from '../world/EnemyPlan';
 import type { Pose } from './EnemyBrain';
 import type { RobotView, RobotViews } from './Enemies';
+import { robotMaterial } from './RobotMaterial';
 import { ROBOTS } from './RobotSpec';
 
 const URLS: Record<RobotKind, string> = { walker, walkerGun, brute, bruteGun, drone, droneGun };
 
-/** HDR glow of eyes and lights, enough to bloom */
-const GLOW = 6;
 /** pose blend time (s) */
 const FADE = 0.2;
 const SPHERE_SLACK = 1.5;
@@ -127,7 +127,18 @@ export function prepareRobot(scene: Object3D, clips: AnimationClip[], material: 
   body.receiveShadow = true;
   for (const p of parts) p.removeFromParent();
   scene.add(body);
+  bakeRestPositions(scene, body);
   cullingBounds(scene, body, clips);
+}
+
+/** where each vertex stands in the unposed robot, feet at the origin */
+function bakeRestPositions(scene: Object3D, body: SkinnedMesh): void {
+  scene.updateMatrixWorld(true);
+  const n = body.geometry.getAttribute('position').count;
+  const rest = new Float32Array(n * 3);
+  const v = new Vector3();
+  for (let i = 0; i < n; i++) body.getVertexPosition(i, v).applyMatrix4(body.matrixWorld).toArray(rest, i * 3);
+  body.geometry.setAttribute('_rest', new BufferAttribute(rest, 3));
 }
 
 /**
@@ -243,8 +254,7 @@ export class RobotModels implements RobotViews {
   }
 
   static async load(kinds: Iterable<RobotKind>, gi: ProbeGI | null, canopyTex: StorageTexture | null): Promise<RobotModels> {
-    const mat = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.4 });
-    mat.emissiveNode = vertexColor().rgb.mul(attribute('_glow', 'float')).mul(GLOW);
+    const mat = robotMaterial();
     if (gi) lightWithProbes(mat, gi, canopyTex);
     const loader = new GLTFLoader();
     const templates = new Map<RobotKind, Template>();

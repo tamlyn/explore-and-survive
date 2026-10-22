@@ -27,7 +27,8 @@ const CANDIDATES: LaunchRecipe[] = [
 ];
 
 const CACHE_PATH = '.cache/webgpu-flags.json';
-const PROBE_BASE = 'http://localhost:5173';
+/** the dev server; LAAS_URL overrides it when another app holds :5173 */
+const PROBE_BASE = process.env['LAAS_URL'] ?? 'http://localhost:5173';
 
 async function probeRecipe(recipe: LaunchRecipe): Promise<Browser | null> {
   let browser: Browser | null = null;
@@ -78,7 +79,7 @@ export async function launchWebGPU(): Promise<{ browser: Browser; recipe: Launch
     }
   }
   throw new Error(
-    'No Chromium launch recipe produced a WebGPU adapter (requires dev server on :5173 for the secure-context probe). ' +
+    `No Chromium launch recipe produced a WebGPU adapter (requires the dev server at ${PROBE_BASE} for the secure-context probe). ` +
       'Tried channel:chromium headless and headed.',
   );
 }
@@ -96,7 +97,7 @@ export interface LaasPageOptions {
   extra?: Record<string, string>;
 }
 
-export function laasUrl(opts: LaasPageOptions, base = 'http://localhost:5173/'): string {
+export function laasUrl(opts: LaasPageOptions, base = `${PROBE_BASE}/`): string {
   const q = new URLSearchParams();
   if (opts.scene) q.set('scene', opts.scene);
   if (opts.seed !== undefined) q.set('seed', String(opts.seed));

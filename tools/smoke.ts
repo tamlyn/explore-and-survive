@@ -3,7 +3,7 @@
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
  * reloads, and nothing throws.
- * Needs the dev server on :5173.
+ * Needs the dev server (LAAS_URL, default :5173).
  *
  *   npm run smoke
  */

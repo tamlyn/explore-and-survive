@@ -613,7 +613,9 @@ export class PostStack {
       c = mix(c, c.mul(vec3(uHighlightTint)), hiMask);
       // saturation + gentle contrast around mid-gray
       c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, float(uSat));
-      c = c.div(0.18).pow(vec3(float(uContrast))).mul(0.18);
+      // oversaturating a bright pure colour (a robot's eye) drives its other
+      // channels negative, and pow() of a negative is NaN: black
+      c = c.max(0).div(0.18).pow(vec3(float(uContrast))).mul(0.18);
       // restrained vignette + static grain (freeze-deterministic)
       const v = screenUV.sub(0.5);
       const vig = float(1).sub(dot(v, v).mul(0.42));

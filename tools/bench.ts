@@ -2,7 +2,7 @@
  * Walk benchmark — boots the world at a bookmark (default: shot 7, forest
  * interior, the heaviest everyday view), switches to walk mode, holds W and reports the
  * presented frame rate (rAF ticks) plus frame-time percentiles and the
- * vegetation counters. Needs the dev server on :5173.
+ * vegetation counters. Needs the dev server (LAAS_URL, default :5173).
  *
  *   npm run bench
  *   npm run bench -- --shot 3 --dsf 2 --min-fps 60
