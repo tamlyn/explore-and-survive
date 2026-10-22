@@ -33,7 +33,7 @@ export interface Bearing {
 
 export class Places {
   constructor(
-    private readonly sites: readonly RuinSite[],
+    readonly sites: readonly RuinSite[],
     private readonly props: readonly Prop[],
     private readonly checkpoints: readonly Checkpoint[],
   ) {}

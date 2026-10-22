@@ -39,6 +39,8 @@ import type { Box } from '../world/Box';
 import { boxColliderDesc, loadRapier, Physics, type Surface, type TerrainGrid } from './Physics';
 import { FIXED_DT, Player, type PlayerInput } from './Player';
 import { PlayerMotor, type Vec3 } from './PlayerMotor';
+import { Radar } from './Radar';
+import { MAP_RES, paintMap } from './RadarMap';
 import { Sfx } from './Sfx';
 import { type ImpactSurface, traceShot } from './Shot';
 import { Tracers } from './Tracers';
@@ -113,6 +115,7 @@ interface Attached {
   sfx: Sfx;
   enemies: Enemies | null;
   checkpoints: Checkpoints | null;
+  radar: Radar;
   /** seconds since dying, while dead */
   deadFor: number;
 }
@@ -214,6 +217,13 @@ export class Game {
       console.error('[laas] viewmodel failed to load', e);
     });
     this.viewmodel.lights = world.lights ?? null;
+    const checkpoints = world.checkpoints ? new Checkpoints(world.checkpoints.spots, world.checkpoints.view) : null;
+    const radar = new Radar(
+      { pixels: paintMap(world.terrain, world.waterAt), res: MAP_RES },
+      world.terrain.worldSize,
+      world.places?.sites.flatMap((s) => s.buildings) ?? [],
+      checkpoints,
+    );
     const gunplay = new Gunplay(
       { weapon: new Weapon(PISTOL), viewmodel: this.viewmodel, impacts, sfx, hud },
       { physics, obstacles: world.obstacles, waterAt: world.waterAt },
@@ -233,7 +243,8 @@ export class Game {
       hud,
       sfx,
       enemies,
-      checkpoints: world.checkpoints ? new Checkpoints(world.checkpoints.spots, world.checkpoints.view) : null,
+      checkpoints,
+      radar,
       deadFor: 0,
     };
   }
@@ -289,6 +300,7 @@ export class Game {
       a.gunplay.updateView(dt, player);
       a.health.update(dt);
       a.hud.updateVitals(dt, a.health.hp, a.health.max);
+      a.radar.update(player.eye.x, player.eye.z, player.yaw);
       Object.assign(a.sfx.listener, { x: player.eye.x, z: player.eye.z, yaw: player.yaw });
     } else {
       this.fly.update(dt, input);
@@ -298,6 +310,7 @@ export class Game {
     a?.impacts.update(dt);
     a?.tracers.update(dt);
     a?.hud.updateToast(dt);
+    if (a) a.radar.visible = this.modeV === 'play';
     a?.enemies?.update(dt, this.modeV === 'play' ? a.player.eye : this.camera.position);
     input.endFrame();
   }
