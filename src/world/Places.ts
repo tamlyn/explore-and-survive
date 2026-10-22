@@ -1,10 +1,11 @@
 /**
  * Places — names for where things are, so a playtest report and the code
  * mean the same spot: settlements S1, S2… in planning order (S1 is the one
- * in view of the spawn), their buildings S1.B1…, and compass headings with
- * north towards −z. The names hold for a given seed.
+ * in view of the spawn), their buildings S1.B1… and beacons, and compass
+ * headings with north towards −z. The names hold for a given seed.
  */
 
+import { BEACON, type Checkpoint } from './CheckpointPlan';
 import { PROP_RADIUS, type Prop } from './PropPlan';
 import type { RuinSite } from './RuinPlan';
 
@@ -34,7 +35,13 @@ export class Places {
   constructor(
     private readonly sites: readonly RuinSite[],
     private readonly props: readonly Prop[],
+    private readonly checkpoints: readonly Checkpoint[],
   ) {}
+
+  /** e.g. "S3" */
+  name(site: number): string {
+    return siteName(site);
+  }
 
   /** the `n` closest settlements to (x, z), closest first */
   nearest(x: number, z: number, n: number): Bearing[] {
@@ -44,8 +51,8 @@ export class Places {
       .slice(0, n);
   }
 
-  /** the building or prop standing at (x, z), if any, e.g. "S3.B2" or
-   *  "S3 car" */
+  /** the building, beacon or prop standing at (x, z), if any, e.g.
+   *  "S3.B2", "S3 beacon" or "S3 car" */
   at(x: number, z: number): string | null {
     for (const [i, site] of this.sites.entries()) {
       for (const [j, b] of site.buildings.entries()) {
@@ -58,6 +65,11 @@ export class Places {
         if (Math.abs(lx) <= b.width / 2 + MARGIN && Math.abs(lz) <= b.depth / 2 + MARGIN) {
           return `${siteName(i)}.B${j + 1}`;
         }
+      }
+    }
+    for (const c of this.checkpoints) {
+      if (Math.abs(x - c.x) <= BEACON.plinth.half + MARGIN && Math.abs(z - c.z) <= BEACON.plinth.half + MARGIN) {
+        return `${siteName(c.site)} beacon`;
       }
     }
     for (const p of this.props) {

@@ -8,7 +8,8 @@
  *
  * The player's fixed physics tick advances the whole world, robots
  * included, so in fly mode the robots hold still. The player has health;
- * dying costs a few seconds and puts them back at the spawn.
+ * dying costs a few seconds and puts them back at the last checkpoint they
+ * stood by (see Checkpoints), or at the spawn.
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -21,9 +22,11 @@ import { FlyCamera } from '../core/FlyCamera';
 import type { CamPose } from '../core/Hooks';
 import { formatCamString } from '../core/Params';
 import { Input } from '../core/Input';
+import type { Checkpoint } from '../world/CheckpointPlan';
 import type { EnemySpawn } from '../world/EnemyPlan';
 import { sampleGrid } from '../world/GridSample';
 import { compass, heading, type Places } from '../world/Places';
+import { type CheckpointView, Checkpoints } from './Checkpoints';
 import { ControlsCard } from './ControlsCard';
 import { Enemies, type EnemyTarget, type RobotViews, SLEEP_RADIUS } from './Enemies';
 import { FirstPersonRig } from './FirstPersonRig';
@@ -58,6 +61,8 @@ export interface GameWorld {
   enemies?: { spawns: EnemySpawn[]; views: RobotViews };
   /** names for the settlements and what stands in them */
   places?: Places;
+  /** a beacon per settlement for the player to find */
+  checkpoints?: { spots: Checkpoint[]; view: CheckpointView };
 }
 
 export type ControlMode = 'play' | 'fly';
@@ -107,6 +112,7 @@ interface Attached {
   hud: GameHud;
   sfx: Sfx;
   enemies: Enemies | null;
+  checkpoints: Checkpoints | null;
   /** seconds since dying, while dead */
   deadFor: number;
 }
@@ -227,12 +233,17 @@ export class Game {
       hud,
       sfx,
       enemies,
+      checkpoints: world.checkpoints ? new Checkpoints(world.checkpoints.spots, world.checkpoints.view) : null,
       deadFor: 0,
     };
   }
 
   get enemies(): Enemies | null {
     return this.attached?.enemies ?? null;
+  }
+
+  get checkpoints(): Checkpoints | null {
+    return this.attached?.checkpoints ?? null;
   }
 
   update(dt: number): void {
@@ -267,7 +278,10 @@ export class Game {
         player.update(dt, input);
         // robots act inside the physics tick, so this frame may have killed
         if (a.health.dead) this.die(a);
-        else if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
+        else {
+          if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
+          this.reachCheckpoint(a);
+        }
       }
       a.rig.update(dt, player);
       const trunks = a.world.obstacles?.trunksNear(player.eye.x, player.eye.z, CANOPY_R) ?? 0;
@@ -295,14 +309,25 @@ export class Game {
     a.hud.dead = true;
   }
 
-  /** the body lies still while the world carries on, then back to the spawn */
+  private reachCheckpoint(a: Attached): void {
+    const cps = a.checkpoints;
+    const c = cps?.reach(a.motor.feet.x, a.motor.feet.z);
+    if (!cps || !c) return;
+    const name = a.world.places?.name(c.site) ?? '';
+    a.hud.toast(`Checkpoint ${name} · ${cps.count} of ${cps.total}`);
+    a.sfx.chime();
+  }
+
+  /** the body lies still while the world carries on, then back to the last
+   *  checkpoint, or the spawn */
   private whileDead(dt: number, a: Attached): void {
     a.player.update(dt, STILL);
     a.deadFor += dt;
     if (a.deadFor < RESPAWN_DELAY) return;
-    const { x, z, yaw } = a.world.spawn;
+    const home = a.checkpoints?.last;
+    const { x, z } = home ?? a.world.spawn;
     const spot = this.spotNear(a, x, z);
-    a.player.spawn(spot.x, spot.y, spot.z, yaw, 0);
+    a.player.spawn(spot.x, spot.y, spot.z, home ? a.player.yaw : a.world.spawn.yaw, 0);
     a.rig.reset();
     a.health.reset();
     a.enemies?.forget();

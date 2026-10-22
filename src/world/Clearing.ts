@@ -5,6 +5,7 @@
  */
 
 import { DataTexture, NearestFilter, RedFormat, UnsignedByteType } from 'three';
+import { BEACON, type Checkpoint } from './CheckpointPlan';
 import { PROP_RADIUS, type Prop } from './PropPlan';
 import { footprintRadius, type RuinSite } from './RuinPlan';
 import { WORLD_SIZE } from './WorldConst';
@@ -30,10 +31,11 @@ const RES = 2048;
 /** a trail is a treeless strip this wide (m) */
 const TRAIL_WIDTH = 5;
 
-export function settlementClearings(sites: RuinSite[], props: Prop[]): Clearing[] {
+export function settlementClearings(sites: RuinSite[], props: Prop[], checkpoints: Checkpoint[]): Clearing[] {
   return [
     ...sites.flatMap((s) => s.buildings.map((b) => ({ x: b.x, z: b.z, radius: footprintRadius(b) + 0.5, margin: 8 }))),
     ...props.map((p) => ({ x: p.x, z: p.z, radius: PROP_RADIUS[p.kind] + 0.3, margin: 2 })),
+    ...checkpoints.map((c) => ({ x: c.x, z: c.z, radius: BEACON.plinth.half + 0.5, margin: 4 })),
   ];
 }
 

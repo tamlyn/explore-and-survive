@@ -9,7 +9,7 @@ const sites: RuinSite[] = [
   { x: 200, z: 0, buildings: [house(200, 0)] },
 ];
 const car: Prop = { kind: 'car', x: 0, y: 0, z: -115, q: [0, 0, 0, 1] };
-const places = new Places(sites, [car]);
+const places = new Places(sites, [car], [{ site: 1, x: 190, y: 0, z: 10 }]);
 
 describe('heading', () => {
   it('runs clockwise from north, which is −z', () => {
@@ -44,5 +44,10 @@ describe('Places', () => {
 
   it('names props by their settlement', () => {
     expect(places.at(1, -115)).toBe('S1 car');
+  });
+
+  it('names beacons by their settlement', () => {
+    expect(places.at(190.5, 10)).toBe('S2 beacon');
+    expect(places.name(1)).toBe('S2');
   });
 });

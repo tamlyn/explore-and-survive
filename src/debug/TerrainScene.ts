@@ -28,6 +28,8 @@ import { WORLD_SIZE } from '../world/WorldConst';
 import { ObstacleField } from '../game/Obstacles';
 import { buildingBlocks, type Ground, planRuins } from '../world/RuinPlan';
 import { buildRuins } from '../world/Ruins';
+import { Beacons } from '../world/Beacons';
+import { beaconBoxes, planCheckpoints } from '../world/CheckpointPlan';
 import { clearingTexture, settlementClearings, trail } from '../world/Clearing';
 import { planEnemies } from '../world/EnemyPlan';
 import { Places } from '../world/Places';
@@ -92,6 +94,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       : [];
   const ruinBlocks = ruinSites.map((site) => site.buildings.flatMap((b) => buildingBlocks(b, ground)));
   const props = planProps(ruinSites, ground, seed.sub('props'));
+  const checkpoints = planCheckpoints(ruinSites, props, ground);
   engine.stats.counters['ruins.sites'] = ruinSites.length;
   // robots (?ablate=enemies): guarding the settlements and roaming between
   const enemySpawns =
@@ -109,7 +112,10 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   // the trees from hiding it
   const firstHouse = ruinSites[0]?.buildings[0];
   const clearing = ruinSites.length
-    ? clearingTexture([...settlementClearings(ruinSites, props), ...(firstHouse ? trail(spawn, firstHouse) : [])])
+    ? clearingTexture([
+        ...settlementClearings(ruinSites, props, checkpoints),
+        ...(firstHouse ? trail(spawn, firstHouse) : []),
+      ])
     : null;
   const scatter = await runScatter(engine.renderer, hf, seed, clearing);
   const canopyTex = await buildCanopyMap(engine.renderer, scatter.trees);
@@ -253,17 +259,20 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
 
   // what the settlements put in the physics world — only what's drawn
   let structures: (Box & { surface: Surface })[] = [];
+  let beacons: Beacons | null = null;
   if (ruinBlocks.length && view !== 'split') {
     const ruinGi = ablate.has('gi') ? null : gi;
     const [ruins, propField] = await Promise.all([
       buildRuins(ruinBlocks, ground, ruinGi, canopyTex),
       Props.load(props, ruinGi, canopyTex),
     ]);
-    engine.scene.add(ruins, propField.group);
+    beacons = new Beacons(checkpoints, ruinGi, canopyTex);
+    engine.scene.add(ruins, propField.group, beacons.mesh);
     engine.onUpdate(() => propField.update(engine.camera.position));
     structures = [
       ...ruinBlocks.flat().filter((b) => b.solid).map((b) => ({ ...b, surface: 'stone' as const })),
       ...propField.colliders(),
+      ...checkpoints.flatMap(beaconBoxes),
     ];
   }
 
@@ -291,6 +300,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     shadowRig,
     ruinSites,
     props,
+    checkpoints,
     enemySpawns,
   };
 
@@ -344,8 +354,9 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
       structures,
       spawn: { x: spawn.x, z: spawn.z, yaw: SPAWN_YAW },
-      places: new Places(ruinSites, props),
+      places: new Places(ruinSites, props, checkpoints),
       ...(obstacles ? { obstacles } : {}),
+      ...(beacons ? { checkpoints: { spots: checkpoints, view: beacons } } : {}),
       ...(robotModels ? { enemies: { spawns: enemySpawns, views: robotModels } } : {}),
     };
   }

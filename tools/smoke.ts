@@ -2,7 +2,7 @@
  * Smoke test — boots the default game spawn and checks the player actually
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
- * reloads, and nothing throws.
+ * reloads, beacons can be claimed, and nothing throws.
  * Needs the dev server (LAAS_URL, default :5173).
  *
  *   npm run smoke
@@ -102,6 +102,18 @@ await page.keyboard.press('KeyP');
 await page.waitForTimeout(200);
 const where = logs.find((l) => l.startsWith('[where]')) ?? '';
 check(/cam=\S+ · near S1 \d+ m .+ · looking at .+, \d+ m/.test(where), `P reports the location (${where})`);
+
+// beside the first beacon, then back to play: standing there claims it
+const beacon = (await page.evaluate('window.__laasDbg.checkpoints[0]')) as { x: number; y: number; z: number } | undefined;
+if (beacon) {
+  await page.evaluate(`window.__laas.setPose({ p: [${beacon.x + 1.5}, ${beacon.y + 1.7}, ${beacon.z}], yaw: 0, pitch: 0 })`);
+  await page.evaluate('window.__laasDbg.game.play()');
+  await page.waitForTimeout(500);
+  const claimed = (await page.evaluate('window.__laasDbg.game.checkpoints.count')) as number;
+  check(claimed === 1, `walking up to a beacon claims it (${claimed} claimed)`);
+} else {
+  check(false, 'every world has a checkpoint');
+}
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 

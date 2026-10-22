@@ -97,6 +97,19 @@ export class Sfx {
     osc.stop(t + 0.3);
   }
 
+  /** a checkpoint claimed: two rising notes */
+  chime(): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    for (const [freq, delay] of [[660, 0], [990, 0.12]] as const) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = freq;
+      osc.connect(envelope(ctx, t + delay, 0.35, 0.6)).connect(this.output());
+      osc.start(t + delay);
+      osc.stop(t + delay + 0.65);
+    }
+  }
+
   /** a gain and pan for a sound at `at`, relative to the listener */
   private placed(at: Vec3): AudioNode {
     const ctx = this.context();
