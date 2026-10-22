@@ -266,8 +266,11 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       buildRuins(ruinBlocks, ground, ruinGi, canopyTex),
       Props.load(props, ruinGi, canopyTex),
     ]);
-    beacons = new Beacons(checkpoints, ruinGi, canopyTex);
-    engine.scene.add(ruins, propField.group, beacons.mesh);
+    engine.scene.add(ruins, propField.group);
+    if (checkpoints.length) {
+      beacons = new Beacons(checkpoints, ruinGi, canopyTex);
+      engine.scene.add(beacons.mesh);
+    }
     engine.onUpdate(() => propField.update(engine.camera.position));
     structures = [
       ...ruinBlocks.flat().filter((b) => b.solid).map((b) => ({ ...b, surface: 'stone' as const })),

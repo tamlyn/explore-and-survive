@@ -41,7 +41,7 @@ function landColor(out: Rgb, h: number): void {
 }
 
 /** RGBA, row-major with north (−z) at the top */
-export function paintMap(terrain: TerrainGrid, waterAt: (x: number, z: number) => number, res = MAP_RES): Uint8ClampedArray {
+export function paintMap(terrain: TerrainGrid, waterAt: (x: number, z: number) => number, res = MAP_RES): Uint8ClampedArray<ArrayBuffer> {
   const { heights, worldSize } = terrain;
   const step = worldSize / res;
   const at = (i: number): number => ((i + 0.5) / res - 0.5) * worldSize;

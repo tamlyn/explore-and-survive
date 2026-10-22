@@ -51,7 +51,8 @@ describe('beaconBoxes', () => {
   it('stands the mast on the plinth, on the ground', () => {
     const [plinth, mast] = beaconBoxes({ site: 0, x: 5, y: 10, z: -3 });
     expect(plinth!.y + plinth!.hy).toBeCloseTo(10 + BEACON.plinth.height);
-    expect(plinth!.y - plinth!.hy).toBeLessThan(10);
+    // deep enough for the steepest ground a plinth may stand on
+    expect(plinth!.y - plinth!.hy).toBeLessThan(10 - 0.35);
     expect(mast!.y - mast!.hy).toBeCloseTo(plinth!.y + plinth!.hy);
     expect(mast!).toMatchObject({ x: 5, z: -3 });
   });

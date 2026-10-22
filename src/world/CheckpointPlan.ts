@@ -20,7 +20,9 @@ export interface Checkpoint {
 
 /** beacon dimensions (m) */
 export const BEACON = {
-  plinth: { half: 0.45, height: 0.5 },
+  /** `sink` is how far it reaches below the ground at its centre, more
+   *  than the RELIEF it may stand on, so no corner floats */
+  plinth: { half: 0.45, height: 0.5, sink: 0.45 },
   mast: { radius: 0.08, height: 4 },
   lamp: { radius: 0.2 },
 };
@@ -69,9 +71,9 @@ export function planCheckpoints(sites: readonly RuinSite[], props: readonly Prop
 export function beaconBoxes(c: Checkpoint): (Box & { surface: 'stone' | 'metal' })[] {
   const { plinth, mast } = BEACON;
   const q: Box['q'] = [0, 0, 0, 1];
-  const sink = 0.3;
+  const { height, sink } = plinth;
   return [
-    { x: c.x, y: c.y + (plinth.height - sink) / 2, z: c.z, hx: plinth.half, hy: (plinth.height + sink) / 2, hz: plinth.half, q, surface: 'stone' },
+    { x: c.x, y: c.y + (height - sink) / 2, z: c.z, hx: plinth.half, hy: (height + sink) / 2, hz: plinth.half, q, surface: 'stone' },
     { x: c.x, y: c.y + plinth.height + mast.height / 2, z: c.z, hx: mast.radius, hy: mast.height / 2, hz: mast.radius, q, surface: 'metal' },
   ];
 }

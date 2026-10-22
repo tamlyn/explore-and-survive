@@ -49,16 +49,18 @@ export class Radar {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly map: HTMLCanvasElement;
   private shown = '';
+  /** what the last frame drew from, to skip redrawing an unchanged view */
+  private drawn = '';
 
   constructor(
-    map: { pixels: Uint8ClampedArray; res: number },
+    map: { pixels: Uint8ClampedArray<ArrayBuffer>; res: number },
     private readonly worldSize: number,
     private readonly buildings: readonly Building[],
     private readonly checkpoints: Checkpoints | null,
   ) {
     this.map = document.createElement('canvas');
     this.map.width = this.map.height = map.res;
-    this.map.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(map.pixels), map.res, map.res), 0, 0);
+    this.map.getContext('2d')!.putImageData(new ImageData(map.pixels, map.res, map.res), 0, 0);
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = this.canvas.height = Math.round(RADIUS * 2 * dpr);
     this.canvas.style.cssText = `width:${RADIUS * 2}px;height:${RADIUS * 2}px;display:block`;
@@ -83,6 +85,9 @@ export class Radar {
 
   /** once per frame while playing */
   update(px: number, pz: number, yaw: number): void {
+    const view = `${px.toFixed(1)},${pz.toFixed(1)},${yaw.toFixed(3)},${this.checkpoints?.count}`;
+    if (view === this.drawn) return;
+    this.drawn = view;
     const { ctx } = this;
     const scale = RADIUS / RANGE;
     ctx.clearRect(0, 0, RADIUS * 2, RADIUS * 2);

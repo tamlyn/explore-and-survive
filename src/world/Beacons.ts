@@ -43,10 +43,9 @@ function part(geo: BufferGeometry, id: number, y: number): BufferGeometry {
 
 function beaconGeometry(): BufferGeometry {
   const { plinth, mast, lamp } = BEACON;
-  const sink = 0.3;
   const top = plinth.height + mast.height;
   return mergeGeometries([
-    part(new BoxGeometry(plinth.half * 2, plinth.height + sink, plinth.half * 2), PLINTH, (plinth.height - sink) / 2),
+    part(new BoxGeometry(plinth.half * 2, plinth.height + plinth.sink, plinth.half * 2), PLINTH, (plinth.height - plinth.sink) / 2),
     part(new CylinderGeometry(mast.radius * 0.7, mast.radius, mast.height, 8), MAST, plinth.height + mast.height / 2),
     part(new SphereGeometry(lamp.radius, 12, 8), LAMP, top + lamp.radius * 0.6),
   ])!;
