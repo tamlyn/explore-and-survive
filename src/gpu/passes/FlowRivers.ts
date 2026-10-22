@@ -76,6 +76,10 @@ export interface FlowOpts {
 /** open water requires real depth — shallow filled bowls become marsh, not ponds */
 const LAKE_DELTA = 2.2;
 const MARSH_DELTA = 0.15;
+/** deepest river channel (m) */
+const CARVE_DEPTH = 5;
+/** talus relax passes after the carve — enough for the walls to settle */
+const RELAX_ITERS = 30;
 
 export async function runFlowRivers(
   renderer: Renderer,
@@ -475,7 +479,7 @@ export async function runFlowRivers(
     // lakebeds keep their filled profile — carving there printed the particle
     // wander pattern into the basin floor (user-flagged artifact)
     const lakeFade = smoothstep(LAKE_DELTA * 0.7, 0.12, lakeD);
-    const depth = sB.pow(1.35).mul(7.5).mul(lakeFade);
+    const depth = sB.pow(1.35).mul(CARVE_DEPTH).mul(lakeFade);
     const hNew = height.element(i).sub(depth).toVar();
     height.element(i).assign(hNew);
     const wl = W.element(at(x, y, -1, 0));
@@ -527,7 +531,7 @@ export async function runFlowRivers(
   // --- 3d. talus relax: carved walls collapse to angle of repose --------------
   // The carve (and any residual erosion notching) leaves near-vertical cell
   // walls; real channels are flanked by talus. Hardness raises the stable
-  // angle so karst towers and hard strata keep their cliffs.
+  // angle so karst towers and hard strata keep steeper faces (up to ~63°).
   const hT = instancedArray(N, 'float');
   const hardness = opts.hardness;
   const texel = opts.texel;
@@ -536,13 +540,13 @@ export async function runFlowRivers(
       const { x, y, i } = cellXY();
       const hC = src.element(i).toVar();
       const hardC = hardness.element(i).toVar();
-      const talusC = float(texel).mul(hardC.mul(hardC).mul(2.8).add(0.62));
+      const talusC = float(texel).mul(hardC.mul(hardC).mul(1.4).add(0.55));
       let delta: NF = float(0);
       for (const [ox, oy] of OFFS.slice(0, 4)) {
         const ni = at(x, y, ox, oy);
         const hN = src.element(ni);
         const hardN = hardness.element(ni);
-        const talusN = float(texel).mul(hardN.mul(hardN).mul(2.8).add(0.62));
+        const talusN = float(texel).mul(hardN.mul(hardN).mul(1.4).add(0.55));
         const dOut = hC.sub(hN).sub(talusC).max(0); // we shed downhill
         const dIn = hN.sub(hC).sub(talusN).max(0); // neighbor sheds onto us
         delta = delta.add(dIn.sub(dOut));
@@ -555,7 +559,7 @@ export async function runFlowRivers(
   const relaxAB = mkRelax(height, hT);
   const relaxBA = mkRelax(hT, height);
   opts.onProgress?.('hydrology: talus relax', 0.78);
-  for (let it = 0; it < 13; it++) {
+  for (let it = 0; it < RELAX_ITERS; it++) {
     await renderer.computeAsync([relaxAB, relaxBA]);
   }
 

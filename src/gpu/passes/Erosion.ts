@@ -247,15 +247,18 @@ export async function runErosion(
   };
 
   // 5. thermal talus relaxation hB → hA (gather form; symmetric pair terms)
+  const talus = (hard: NF): NF => float(0.55).add(hard.mul(hard).mul(1.4));
+  // even the hardest rock sheds a little, or its faces never leave the vertical
+  const shedRate = (hard: NF): NF => float(1).sub(hard.mul(0.7)).pow(1.5).mul(THERMAL_RATE * DT * texel);
   const thermalK = ((): ComputeNode => {
     const k = guard(() => {
       const { x, y, i } = cellXY();
       const h0 = hB.element(i).toVar();
       const hard0 = hardness.element(i).toVar();
-      // hard rock holds near-cliff angles (tan up to ~3.1 ≈ 72°) and sheds
-      // material far slower; soft soil relaxes to ~29°
-      const talus0 = float(0.55).add(hard0.mul(hard0).mul(2.6));
-      const rate0 = float(1).sub(hard0).pow(1.5).mul(THERMAL_RATE * DT * texel);
+      // hard rock holds steeper faces (tan up to ~1.95 ≈ 63°) and sheds
+      // material slower; soft soil relaxes to ~29°
+      const talus0 = talus(hard0);
+      const rate0 = shedRate(hard0);
       let net: NF = float(0);
       const offs: [number, number][] = [
         [-1, 0],
@@ -272,8 +275,8 @@ export async function runErosion(
         const j = at(x, y, ox, oy);
         const hn = hB.element(j);
         const hardN = hardness.element(j);
-        const talusN = float(0.55).add(hardN.mul(hardN).mul(2.6));
-        const rateN = float(1).sub(hardN).pow(1.5).mul(THERMAL_RATE * DT * texel);
+        const talusN = talus(hardN);
+        const rateN = shedRate(hardN);
         const out = max(0, h0.sub(hn).div(dist).sub(talus0)).mul(rate0);
         const inn = max(0, hn.sub(h0).div(dist).sub(talusN)).mul(rateN);
         net = net.add(inn).sub(out);
