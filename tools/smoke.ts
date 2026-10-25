@@ -2,8 +2,8 @@
  * Smoke test — boots the default game spawn and checks the player actually
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
- * reloads, the axe can be picked, beacons can be claimed, scrap can be picked up, and nothing
- * throws.
+ * reloads, the axe can be picked, beacons can be claimed, scrap can be
+ * picked up, and nothing throws.
  * Needs the dev server (LAAS_URL, default :5173).
  *
  *   npm run smoke
