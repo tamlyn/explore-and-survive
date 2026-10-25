@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { radarOffset, rimTargets } from './Radar';
+import { formatDistance, radarOffset, rimTargets } from './Radar';
 import { paintMap } from './RadarMap';
 
 describe('radarOffset', () => {
@@ -25,6 +25,15 @@ describe('rimTargets', () => {
     ];
     expect(rimTargets(spots, 0, 0, 300, 2)).toEqual([spots[2], spots[1]]);
     expect(rimTargets(spots, 0, 0, 0, 1)).toEqual([spots[0]]);
+  });
+});
+
+describe('formatDistance', () => {
+  it('rounds to 10 m, then to tenths of a km', () => {
+    expect(formatDistance(214)).toBe('210 m');
+    expect(formatDistance(994)).toBe('990 m');
+    expect(formatDistance(996)).toBe('1.0 km');
+    expect(formatDistance(2360)).toBe('2.4 km');
   });
 });
 

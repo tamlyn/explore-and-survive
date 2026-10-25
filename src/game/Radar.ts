@@ -3,8 +3,7 @@
  * so straight ahead is up. It scrolls the painted relief map (RadarMap),
  * draws the settlements' houses, and marks beacons: amber unclaimed, green
  * claimed. The nearest unclaimed beacons beyond its range sit on the rim,
- * pointing the way, and the caption gives the tally and how far the next
- * one is.
+ * pointing the way with how far each is, and the caption gives the tally.
  */
 
 import type { Building } from '../world/RuinPlan';
@@ -30,6 +29,11 @@ export function radarOffset(dx: number, dz: number, yaw: number): { x: number; y
 export interface Spot {
   x: number;
   z: number;
+}
+
+/** to the nearest 10 m, then tenths of a km */
+export function formatDistance(m: number): string {
+  return m < 995 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`;
 }
 
 /** the `n` nearest spots farther than `range`, nearest first */
@@ -144,16 +148,25 @@ export class Radar {
   }
 
   private rim(cps: Checkpoints, px: number, pz: number, yaw: number): void {
+    const { ctx } = this;
     const unclaimed = cps.spots.filter((_, i) => !cps.isClaimed(i));
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
     for (const c of rimTargets(unclaimed, px, pz, RANGE, RIM_TARGETS)) {
       const o = radarOffset(c.x - px, c.z - pz, yaw);
       const d = Math.hypot(o.x, o.y);
-      const r = RADIUS - 8;
-      this.arrow(RADIUS + (o.x / d) * r, RADIUS + (o.y / d) * r, Math.atan2(o.x, -o.y), 6, AMBER);
+      const ux = o.x / d;
+      const uy = o.y / d;
+      this.arrow(RADIUS + ux * (RADIUS - 8), RADIUS + uy * (RADIUS - 8), Math.atan2(o.x, -o.y), 6, AMBER);
+      const label = formatDistance(Math.hypot(c.x - px, c.z - pz));
+      const lx = RADIUS + ux * (RADIUS - 26);
+      const ly = RADIUS + uy * (RADIUS - 22);
+      ctx.strokeText(label, lx, ly);
+      ctx.fillStyle = AMBER;
+      ctx.fillText(label, lx, ly);
     }
-    const next = rimTargets(unclaimed, px, pz, 0, 1)[0];
-    const far = next ? ` · next ${Math.round(Math.hypot(next.x - px, next.z - pz) / 10) * 10} m` : '';
-    const text = `Checkpoints ${cps.count} / ${cps.total}${far}`;
+    const text = `Checkpoints ${cps.count} / ${cps.total}`;
     if (text !== this.shown) {
       this.shown = text;
       this.caption.textContent = text;
