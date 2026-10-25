@@ -135,6 +135,18 @@ export class Physics {
     };
   }
 
+  /** who stands inside a box: the player, robots… */
+  targetsIn(b: Box): Hittable[] {
+    const found: Hittable[] = [];
+    const [x, y, z, w] = b.q;
+    this.world.intersectionsWithShape(b, { x, y, z, w }, new this.rapier.Cuboid(b.hx, b.hy, b.hz), (c) => {
+      const target = this.targets.get(c.handle);
+      if (target) found.push(target);
+      return true;
+    });
+    return found;
+  }
+
   /** height of the terrain collider's surface under (x, z) — obstacles
    *  ignored — or null outside the world */
   terrainY(x: number, z: number): number | null {

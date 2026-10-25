@@ -21,6 +21,8 @@ export interface Impact {
   surface: ImpactSurface;
   /** who the shot hurts, if anyone */
   target: Hittable | null;
+  /** what it struck, when that's in the physics world */
+  collider?: RAPIER.Collider | undefined;
 }
 
 export interface ShotWorld {
@@ -57,6 +59,6 @@ export function traceShot(
       target: null,
     };
   }
-  const target = hit === near ? near.target : null;
-  return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone', target };
+  if (hit === near) return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone', target: near.target, collider: near.collider };
+  return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone', target: null };
 }

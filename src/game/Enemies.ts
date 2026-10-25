@@ -7,6 +7,8 @@
  * Robots sense and shoot through the same ray casts as the player's gun: one
  * sees the player when a ray from its sensor reaches the player's capsule
  * first, and its rounds are traced, so walls, trees and rocks give cover.
+ * What the player builds is different: a robot knows who's behind it, and
+ * shoots or hits that instead.
  */
 
 import type RAPIER from '@dimforge/rapier3d-compat';
@@ -35,6 +37,8 @@ const VIEW_HALF_ANGLE = 1.2;
 const NEAR = 8;
 /** gunshots carry this far (m) */
 const HEARING = 60;
+/** a sight line passes through at most this many of the player's pieces */
+const SEE_THROUGH = 4;
 /** drones climb or sink towards their hover height at up to this (m/s) */
 const HOVER_RATE = 3;
 /** lowest a drone comes down to (m) */
@@ -79,6 +83,9 @@ class Robot implements Hittable {
   readonly spec: RobotSpec;
   readonly health: Health;
   seen = false;
+  /** where the player's building stands in the way of a sighting */
+  readonly through: Vec3 = { x: 0, y: 0, z: 0 };
+  blocked = false;
   senseIn: number;
   /** where a destroyed robot's view rests */
   readonly wreck: Vec3 = { x: 0, y: 0, z: 0 };
@@ -228,7 +235,7 @@ export class Enemies {
         r.seen = this.target.alive && this.sees(r);
       }
       const f = r.motor.feet;
-      const seen = r.seen && this.target.alive ? this.target.aim : null;
+      const seen = r.seen && this.target.alive ? this.aimOf(r) : null;
       if (r.brain.tick(dt, { x: f.x, z: f.z, seen })) this.attack(r);
       const { move } = r.brain;
       if (r.spec.hover) {
@@ -257,19 +264,45 @@ export class Enemies {
       const ahead = (-Math.sin(r.brain.yaw) * dx - Math.cos(r.brain.yaw) * dz) / Math.hypot(dx, dz);
       if (ahead < Math.cos(VIEW_HALF_ANGLE)) return false;
     }
-    const hit = traceShot(this.world, eye, { x: dx / d, y: dy / d, z: dz / d }, d + 1, r.motor.collider);
-    return hit?.target === this.target;
+    const dir = { x: dx / d, y: dy / d, z: dz / d };
+    r.blocked = false;
+    let from: Vec3 = eye;
+    let left = d + 1;
+    let exclude = r.motor.collider;
+    for (let n = 0; n < SEE_THROUGH; n++) {
+      const hit = traceShot(this.world, from, dir, left, exclude);
+      if (!hit?.target || hit.target instanceof Robot || !hit.collider) return false;
+      if (hit.target === this.target) return true;
+      // something else that can be hurt: the player's building
+      if (!r.blocked) Object.assign(r.through, { x: hit.x, y: hit.y, z: hit.z });
+      r.blocked = true;
+      left -= Math.hypot(hit.x - from.x, hit.y - from.y, hit.z - from.z);
+      from = hit;
+      exclude = hit.collider;
+    }
+    return false;
+  }
+
+  /** what a robot that sees the player goes for: them, or what's in the way */
+  private aimOf(r: Robot): Vec3 {
+    return r.blocked ? r.through : this.target.aim;
   }
 
   private attack(r: Robot): void {
     const { attack } = r.spec;
-    const aim = this.target.aim;
+    const aim = this.aimOf(r);
     const f = r.motor.feet;
     if (!attack.ranged) {
       const reach = attack.range + r.spec.radius;
-      if (Math.hypot(aim.x - f.x, aim.z - f.z) <= reach && Math.abs(aim.y - (f.y + r.spec.eye)) < 2) {
-        this.target.hurt(attack.damage, r.eye(EYE));
-      }
+      if (Math.hypot(aim.x - f.x, aim.z - f.z) > reach || Math.abs(aim.y - (f.y + r.spec.eye)) >= 2) return;
+      // a blow lands on whatever it meets first
+      const eye = r.eye(EYE);
+      const dx = aim.x - eye.x;
+      const dy = aim.y - eye.y;
+      const dz = aim.z - eye.z;
+      const d = Math.hypot(dx, dy, dz) || 1;
+      const hit = traceShot(this.world, eye, { x: dx / d, y: dy / d, z: dz / d }, d + 0.5, r.motor.collider);
+      if (hit?.target && !(hit.target instanceof Robot)) hit.target.hurt(attack.damage, eye);
       return;
     }
     const from = r.muzzle(MUZZLE);
@@ -287,7 +320,7 @@ export class Enemies {
     const range = attack.range * 1.5;
     const hit = traceShot(this.world, from, dir, range, r.motor.collider);
     // robots don't shoot each other: a round into a comrade just sparks
-    if (hit?.target === this.target) this.target.hurt(attack.damage, from);
+    if (hit?.target && !(hit.target instanceof Robot)) hit.target.hurt(attack.damage, from);
     const to = hit ?? { x: from.x + dir.x * range, y: from.y + dir.y * range, z: from.z + dir.z * range };
     this.fx.shot({ ...from }, { x: to.x, y: to.y, z: to.z }, hit);
   }

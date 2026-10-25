@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { EnemySpawn } from '../world/EnemyPlan';
+import { Building, type PieceView } from './Building';
 import { Enemies, type EnemyFx, type EnemyTarget, type RobotView } from './Enemies';
 import { loadRapier, Physics, type Rapier } from './Physics';
 import { PlayerMotor, type Vec3 } from './PlayerMotor';
@@ -97,6 +98,18 @@ function setup(
 
 const gunner = (x: number, z: number): EnemySpawn => ({ kind: 'walkerGun', x, z, roam: 2 });
 
+const NO_VIEW: PieceView = { add: () => 0, remove: () => {}, wear: () => {} };
+
+/** a wall across z = −4 from x = 0 to 4, between a robot ahead and the player */
+function walledIn(spawn: EnemySpawn): Setup & { building: Building } {
+  const s = setup([spawn]);
+  const building = new Building(physics!, NO_VIEW, { broke: () => {} });
+  building.place({ kind: 'wall', i: 0, j: -1, y: 0, dir: 0 });
+  s.player.at(2, 0);
+  physics!.step();
+  return { ...s, building };
+}
+
 describe('Enemies', () => {
   it('wakes robots near the player and puts far ones to sleep', () => {
     StubView.live = 0;
@@ -144,6 +157,26 @@ describe('Enemies', () => {
     s.run(15);
     expect(s.shots).toBe(0);
     expect(s.player.hp).toBe(100);
+  });
+
+  it("robots shoot down the player's wall, then the player", () => {
+    const s = walledIn(gunner(2, -25));
+    s.run(0.1);
+    s.enemies.hear(s.player.aim);
+    s.run(10);
+    expect(s.building.count).toBe(1);
+    expect(s.player.hp).toBe(100);
+    s.run(40);
+    expect(s.building.count).toBe(0);
+    expect(s.player.hp).toBeLessThan(100);
+  });
+
+  it("brawlers break the player's wall to get at them", () => {
+    const s = walledIn({ kind: 'brute', x: 2, z: -8, roam: 0.1 });
+    s.run(0.1);
+    s.enemies.hear(s.player.aim);
+    s.run(25);
+    expect(s.building.count).toBe(0);
   });
 
   it('a hit alerts the robot, and enough of them destroy it for good', () => {
