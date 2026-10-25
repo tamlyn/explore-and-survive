@@ -18,6 +18,7 @@
  * player) attaches after the scene is built; until then only fly exists.
  */
 
+import type RAPIER from '@dimforge/rapier3d-compat';
 import type { PerspectiveCamera, Scene } from 'three';
 import { aimDirection, bearing } from '../core/CameraAim';
 import { FlyCamera } from '../core/FlyCamera';
@@ -273,13 +274,18 @@ export class Game {
 
   /** an emptied crate leaves the physics world as well as the view */
   private makeLoot(w: NonNullable<GameWorld['loot']>, physics: Physics): Loot {
-    const colliders = w.caches.map((c) => physics.addCollider(boxColliderDesc(physics.rapier, c.box), c.box.surface));
+    const collider = (c: Cache): RAPIER.Collider => physics.addCollider(boxColliderDesc(physics.rapier, c.box), c.box.surface);
+    const colliders = w.caches.map(collider);
     return new Loot(
       w.caches,
       {
         take: (i) => {
           w.cacheView.take(i);
           physics.removeCollider(colliders[i]!);
+        },
+        restore: (i) => {
+          w.cacheView.restore(i);
+          colliders[i] = collider(w.caches[i]!);
         },
       },
       w.dropView,
@@ -338,6 +344,7 @@ export class Game {
           if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
           this.reachCheckpoint(a);
           this.collect(a);
+          a.loot?.update(dt, a.motor.feet);
         }
       }
       a.rig.update(dt, player);

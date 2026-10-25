@@ -1,7 +1,8 @@
 /**
  * Loot — what the player can pick up: medkits packed in the settlements'
- * crates (which go once taken), and the metal, wood and medkits left on the
- * ground by destroyed robots and felled trees. Walking up to it takes it,
+ * crates (which go once taken, and come back filled a few minutes later),
+ * and the metal, wood and medkits left on the ground by destroyed robots
+ * and felled trees. Walking up to it takes it,
  * but only when the player can use it, so a crate waits until it's needed.
  * The views draw it; this decides.
  */
@@ -41,6 +42,7 @@ export interface Cache extends Haul {
 
 export interface CacheView {
   take(i: number): void;
+  restore(i: number): void;
 }
 
 export interface DropView {
@@ -49,6 +51,10 @@ export interface DropView {
   remove(id: number): void;
 }
 
+/** an emptied crate comes back this long after (s)… */
+export const CACHE_REFILL = 240;
+/** …once the player is this far away, so it isn't seen to appear (m) */
+const REFILL_UNSEEN = 25;
 /** how far past a crate's footprint the player reaches into it (m) */
 const CACHE_REACH = 0.7;
 /** how close the feet must come to a dropped pickup (m) */
@@ -62,7 +68,8 @@ interface Drop extends Haul {
 }
 
 export class Loot {
-  private readonly left: boolean[];
+  /** seconds until each crate is back, null while it's there */
+  private readonly refill: (number | null)[];
   private readonly drops: Drop[] = [];
 
   constructor(
@@ -71,7 +78,19 @@ export class Loot {
     private readonly dropView: DropView,
     private readonly random: () => number = Math.random,
   ) {
-    this.left = caches.map(() => true);
+    this.refill = caches.map(() => null);
+  }
+
+  /** once per frame: bring back crates that have been empty long enough */
+  update(dt: number, at: Vec3): void {
+    this.caches.forEach(({ box }, i) => {
+      const left = this.refill[i];
+      if (left == null) return;
+      this.refill[i] = left - dt;
+      if (left - dt > 0 || Math.hypot(at.x - box.x, at.z - box.z) < REFILL_UNSEEN) return;
+      this.refill[i] = null;
+      this.cacheView.restore(i);
+    });
   }
 
   /** what a robot destroyed at (x, z) leaves on the ground at `y` */
@@ -97,12 +116,12 @@ export class Loot {
    *  a second medkit isn't wasted on a player the first one healed */
   reach(at: Vec3, use: (haul: Haul) => boolean): void {
     this.caches.forEach((c, i) => {
-      if (!this.left[i]) return;
+      if (this.refill[i] != null) return;
       const { box } = c;
       if (Math.abs(at.y - box.y) > 2) return;
       if (Math.hypot(at.x - box.x, at.z - box.z) > Math.hypot(box.hx, box.hz) + CACHE_REACH) return;
       if (!use(c)) return;
-      this.left[i] = false;
+      this.refill[i] = CACHE_REFILL;
       this.cacheView.take(i);
     });
     for (let i = this.drops.length - 1; i >= 0; i--) {

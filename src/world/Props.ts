@@ -3,7 +3,7 @@
  * props near the camera: past their draw distance they cover a pixel or
  * two, so the far field costs nothing in the main pass or the shadow
  * cascades. Each prop collides as its model's bounding box. A prop can be
- * taken away (a crate emptied), and is drawn no more.
+ * taken away (a crate emptied) and later put back.
  */
 
 import { Box3, Group, InstancedMesh, Matrix4, Mesh, type MeshStandardMaterial, Quaternion, Vector3 } from 'three';
@@ -116,6 +116,11 @@ export class Props {
 
   take(p: Prop): void {
     this.taken.add(p);
+    this.last.set(Infinity, 0, 0);
+  }
+
+  restore(p: Prop): void {
+    this.taken.delete(p);
     this.last.set(Infinity, 0, 0);
   }
 

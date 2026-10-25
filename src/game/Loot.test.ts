@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Cache, Loot, type LootKind, MAX_DROPS } from './Loot';
+import { CACHE_REFILL, type Cache, Loot, type LootKind, MAX_DROPS } from './Loot';
 
 const crate = (x: number, kind: LootKind = 'medkit'): Cache => ({
   kind,
@@ -9,11 +9,12 @@ const crate = (x: number, kind: LootKind = 'medkit'): Cache => ({
 
 function setup(caches: Cache[], random = (): number => 0.5) {
   const taken: number[] = [];
+  const restored: number[] = [];
   const shown = new Map<number, LootKind>();
   let next = 0;
   const loot = new Loot(
     caches,
-    { take: (i) => taken.push(i) },
+    { take: (i) => taken.push(i), restore: (i) => restored.push(i) },
     {
       add: (kind) => {
         shown.set(next, kind);
@@ -23,7 +24,7 @@ function setup(caches: Cache[], random = (): number => 0.5) {
     },
     random,
   );
-  return { loot, taken, shown };
+  return { loot, taken, restored, shown };
 }
 
 /** what `use` was handed and took, as plain hauls */
@@ -44,6 +45,18 @@ describe('Loot', () => {
     expect(taken).toEqual([0]);
     expect(reach(loot, { x: 1.2, y: 0, z: 0 })).toEqual([]);
     expect(reach(loot, { x: 3, y: 0, z: 0 })).toEqual([]);
+  });
+
+  it('fills an emptied crate again a while later, out of sight', () => {
+    const { loot, restored } = setup([crate(0)]);
+    const near = { x: 1.2, y: 0, z: 0 };
+    reach(loot, near);
+    loot.update(CACHE_REFILL - 1, near);
+    loot.update(2, near);
+    expect(restored).toEqual([]);
+    loot.update(0.1, { x: 40, y: 0, z: 0 });
+    expect(restored).toEqual([0]);
+    expect(reach(loot, near)).toHaveLength(1);
   });
 
   it('leaves what the player cannot use', () => {

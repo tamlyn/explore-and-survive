@@ -288,7 +288,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     engine.onUpdate((dt) => pickups.update(dt));
     loot = {
       caches: crates.map((p) => ({ ...CACHE_LOOT[p.kind]!, box: propField.collider(p) })),
-      cacheView: { take: (i) => propField.take(crates[i]!) },
+      cacheView: { take: (i) => propField.take(crates[i]!), restore: (i) => propField.restore(crates[i]!) },
       dropView: pickups,
     };
   }
