@@ -37,7 +37,10 @@ describe('Arsenal', () => {
     a.update(0, keys([], 1));
     expect(a.current).toBe('axe');
     a.update(1, keys([], 1));
+    a.update(1, keys([], 1));
     expect(a.current).toBe('pistol');
+    a.update(1, keys([], -1));
+    expect(a.current).toBe('build');
   });
 
   it('takes no new pick mid-change, so a long scroll lands on one tool', () => {

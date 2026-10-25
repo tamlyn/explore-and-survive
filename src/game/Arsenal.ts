@@ -6,10 +6,10 @@
 
 import type { PlayerInput } from './Player';
 
-export type Tool = 'pistol' | 'axe';
+export type Tool = 'pistol' | 'axe' | 'build';
 
 /** in slot order: key 1 is the first */
-export const TOOLS: readonly Tool[] = ['pistol', 'axe'];
+export const TOOLS: readonly Tool[] = ['pistol', 'axe', 'build'];
 
 /** lowering one and raising the next (s) */
 const SWITCH_TIME = 0.4;

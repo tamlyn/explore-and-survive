@@ -12,7 +12,8 @@
  * dying costs a few seconds and puts them back at the last checkpoint they
  * stood by (see Checkpoints), or at the spawn. Medkits come from crates and
  * wrecked robots, which also leave metal (see Loot), and health only
- * regenerates part of the way. The axe fells trees for wood (see Lumber).
+ * regenerates part of the way. The axe fells trees for wood (see Lumber),
+ * which builds walls, floors and ramps (see Builder).
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -36,6 +37,8 @@ import { Enemies, type EnemyTarget, type RobotViews, SLEEP_RADIUS } from './Enem
 import { FirstPersonRig } from './FirstPersonRig';
 import { GameHud } from './GameHud';
 import { Arms } from './Arms';
+import { Builder, type GhostView } from './Builder';
+import { Building, type PieceView } from './Building';
 import { Gunplay } from './Gunplay';
 import { Lumber, woodIn } from './Lumber';
 import { AXE, Melee, Swing } from './Melee';
@@ -77,6 +80,8 @@ export interface GameWorld {
   trees?: { fell(slot: number): void };
   /** crates with something in them, and how dropped loot is drawn */
   loot?: { caches: Cache[]; cacheView: CacheView; dropView: DropView };
+  /** how the player's building is drawn */
+  building?: PieceView & GhostView;
 }
 
 export type ControlMode = 'play' | 'fly';
@@ -97,6 +102,8 @@ const LOOK_RANGE = 1000;
 const WORLD_EDGE_MARGIN = 2;
 
 const DOWN = { x: 0, y: -1, z: 0 };
+/** for scenes that don't draw building */
+const UNSEEN: PieceView & GhostView = { add: () => 0, remove: () => {}, wear: () => {}, ghost: () => {} };
 /** a felled tree's wood comes as logs of up to this much */
 const WOOD_PER_LOG = 3;
 
@@ -134,6 +141,7 @@ interface Attached {
   enemies: Enemies | null;
   checkpoints: Checkpoints | null;
   loot: Loot | null;
+  building: Building;
   /** wood and metal gathered, for building and buying with later */
   carried: Record<Material, number>;
   radar: Radar;
@@ -283,12 +291,26 @@ export class Game {
             },
           )
         : null;
+    const buildingView = world.building ?? UNSEEN;
+    const building = new Building(physics, buildingView, {
+      broke: (at) => {
+        sfx.splinter(at);
+        for (let k = 0; k < 3; k++) {
+          const x = at.x + (Math.random() - 0.5) * 2;
+          const z = at.z + (Math.random() - 0.5) * 2;
+          impacts.spawn({ x, y: at.y + (Math.random() - 0.5), z, normal: { x: 0, y: 1, z: 0 }, surface: 'wood', target: null });
+        }
+      },
+    });
+    const carried = { wood: 0, metal: 0 };
+    const builder = new Builder({ building, ghost: buildingView, sfx, hud }, carried, motor, groundAt);
     const swing = new Swing(AXE);
     const arms = new Arms({
       gunplay,
       weapon,
       melee: new Melee({ swing, impacts, sfx, hud }, physics, lumber, motor.collider),
       swing,
+      builder,
       viewmodel: this.viewmodel,
       hud,
     });
@@ -309,7 +331,8 @@ export class Game {
       enemies,
       checkpoints,
       loot,
-      carried: { wood: 0, metal: 0 },
+      building,
+      carried,
       radar,
       deadFor: 0,
     };
@@ -541,7 +564,7 @@ export class Game {
     if (!hit) return 'sky';
     const built = hit.surface !== 'ground' && hit.surface !== 'water';
     const what =
-      (hit.target && a.enemies?.describe(hit.target)) ??
+      (hit.target && (a.enemies?.describe(hit.target) ?? a.building.describe(hit.target))) ??
       (built ? a.world.places?.at(hit.x, hit.z) : null) ??
       SURFACE_NAMES[hit.surface];
     return `${what}, ${Math.round(Math.hypot(hit.x - x, hit.y - y, hit.z - z))} m`;

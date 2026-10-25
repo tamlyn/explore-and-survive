@@ -7,7 +7,7 @@
  * looking up builds a storey higher.
  *
  * The grid's heights aren't fixed to the world, as the ground isn't flat: a
- * piece built next to others shares their storeys, so a structure lines up
+ * piece built against others shares their storeys, so a structure lines up
  * with itself; one built alone rests on the ground.
  */
 
@@ -128,8 +128,25 @@ export function aim(kind: PieceKind, s: Stance, plot: Plot): Piece {
     j += dj;
   }
   const want = standingLevel(s, d) + (s.pitch > LOOK_UP ? STOREY : 0);
-  const y = latticeY(plot.near(i, j), want) ?? restingY(kind, i, j, dir, plot);
+  const at = footprint({ kind, i, j, dir });
+  const against = plot.near(i, j).filter((p) => touching(at, footprint(p), kind === 'wall' && p.kind === 'wall'));
+  const y = latticeY(against, want) ?? restingY(kind, i, j, dir, plot);
   return { kind, i, j, y, dir };
+}
+
+/** what a piece covers on the ground: [x0, z0, x1, z1] */
+function footprint(p: Pick<Piece, 'kind' | 'i' | 'j' | 'dir'>): [number, number, number, number] {
+  const x0 = p.i * CELL;
+  const z0 = p.j * CELL;
+  if (p.kind !== 'wall') return [x0, z0, x0 + CELL, z0 + CELL];
+  return p.dir === 0 ? [x0, z0, x0 + CELL, z0] : [x0, z0, x0, z0 + CELL];
+}
+
+/** sharing some of an edge, or a corner if `corners` (walls meeting at one) */
+function touching(a: number[], b: number[], corners: boolean): boolean {
+  const x = Math.min(a[2]!, b[2]!) - Math.max(a[0]!, b[0]!);
+  const z = Math.min(a[3]!, b[3]!) - Math.max(a[1]!, b[1]!);
+  return x >= 0 && z >= 0 && (corners || x > 0 || z > 0);
 }
 
 /** the storey line the player stands on: going up a ramp, its top */

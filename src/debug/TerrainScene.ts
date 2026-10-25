@@ -35,6 +35,7 @@ import { planEnemies } from '../world/EnemyPlan';
 import { Places } from '../world/Places';
 import { planProps, type PropKind } from '../world/PropPlan';
 import type { GameWorld } from '../game/Game';
+import { BuildingView } from '../game/BuildingView';
 import { CACHE_LOOT } from '../game/Loot';
 import { Pickups } from '../game/Pickups';
 import { RobotModels } from '../game/RobotModels';
@@ -365,7 +366,10 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     water: hf.waterYAtCpu(x, z),
   });
   if (hf.cpuHeights) {
+    const building = new BuildingView(ablate.has('gi') ? null : gi, canopyTex);
+    engine.scene.add(...building.meshes);
     ctx.gameWorld = {
+      building,
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },

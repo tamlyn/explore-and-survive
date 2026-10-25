@@ -172,6 +172,29 @@ export class Sfx {
     crash.stop(t + 1.5);
   }
 
+  /** a built piece giving way: a crack, then splintering */
+  splinter(at: Vec3): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const out = this.placed(at);
+    const crack = this.noiseSource(ctx);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2500;
+    crack.connect(hp).connect(envelope(ctx, t, 0.9, 0.05)).connect(out);
+    crack.start(t, Math.random() * 0.5);
+    crack.stop(t + 0.06);
+    const crunch = this.noiseSource(ctx);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 0.8;
+    bp.frequency.setValueAtTime(1400, t + 0.03);
+    bp.frequency.exponentialRampToValueAtTime(250, t + 0.45);
+    crunch.connect(bp).connect(envelope(ctx, t + 0.03, 1, 0.45)).connect(out);
+    crunch.start(t + 0.03, Math.random() * 0.4);
+    crunch.stop(t + 0.5);
+  }
+
   /** something picked up: a quick rising blip */
   pickup(): void {
     const ctx = this.context();

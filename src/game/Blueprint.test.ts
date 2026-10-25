@@ -50,6 +50,18 @@ describe('aim', () => {
     expect(aim('wall', stance({ feet: { x: 1, y: 6.9, z: 1 } }), flat(6.9, [floor])).y).toBeCloseTo(10.3 - STOREY);
   });
 
+  it('lines up only with pieces it touches', () => {
+    // a wall on the far side of the player's cell, and a floor ahead of it
+    const wall: Piece = { kind: 'wall', i: 0, j: 0, y: 0.8, dir: 0 };
+    const facingAway = stance({ yaw: Math.PI });
+    expect(aim('floor', facingAway, flat(0, [wall])).y).toBeCloseTo(0);
+    expect(aim('wall', facingAway, flat(0, [wall])).y).toBeCloseTo(0);
+    // a wall at its corner does count, but a floor's corner doesn't
+    expect(aim('wall', stance({ yaw: Math.PI / 2 }), flat(0, [wall])).y).toBeCloseTo(0.8);
+    const floor: Piece = { kind: 'floor', i: -1, j: 0, y: 0.8, dir: 0 };
+    expect(aim('ramp', facingAway, flat(0, [floor])).y).toBeCloseTo(0);
+  });
+
   it('keeps climbing from the top of a ramp', () => {
     const ramp: Piece = { kind: 'ramp', i: 0, j: 0, y: 0, dir: 0 };
     const midway = stance({ feet: { x: 1, y: 1.4, z: 2 }, on: ramp });

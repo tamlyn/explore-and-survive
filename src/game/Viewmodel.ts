@@ -1,5 +1,6 @@
 /**
- * Viewmodel — the tool in the player's hand, pistol or axe. It lives in its
+ * Viewmodel — the tool in the player's hand, pistol or axe (building is
+ * done empty-handed). It lives in its
  * own small scene with its own camera, which the post stack lays over the
  * world (see Overlay): the tool can't clip into trunks, keeps a steady FOV
  * through the sprint kick and isn't smeared by the world's TRAA. The
@@ -101,7 +102,8 @@ export class Viewmodel {
   private readonly sun = new DirectionalLight();
   private readonly ambient = new Hemi();
   private readonly holder = new Group(); // posed each frame
-  private readonly tools: Record<Tool, Group> = { pistol: new Group(), axe: axeModel() };
+  /** building is done with empty hands */
+  private readonly tools: Record<Tool, Group> = { pistol: new Group(), axe: axeModel(), build: new Group() };
   private readonly flash: Mesh;
   private readonly flashIntensity = runiform(0);
   private flashLeft = 0;
@@ -189,8 +191,7 @@ export class Viewmodel {
 
     stepSpring(this.kick, KICK_K, KICK_C, dt);
 
-    this.tools.pistol.visible = pose.tool === 'pistol';
-    this.tools.axe.visible = pose.tool === 'axe';
+    for (const [tool, model] of Object.entries(this.tools)) model.visible = tool === pose.tool;
     const h = this.holder;
     // what every tool shares: bob, sway, the sprint carry and the change dip
     h.position.set(
@@ -207,7 +208,7 @@ export class Viewmodel {
       h.rotation.x += this.kick.x * 0.06 - dip * 0.6;
       h.rotation.y += REST_YAW;
       h.rotation.z += dip * 0.5;
-    } else {
+    } else if (pose.tool === 'axe') {
       const sw = axeSwing(pose.swing);
       h.position.add(AXE_REST).add(sw.at);
       h.rotation.x += AXE_TILT.x + sw.rx;

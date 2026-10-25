@@ -1,12 +1,14 @@
 /**
- * GameHud — crosshair (which flashes on a hit), the tools to pick from
- * and the rounds in the pistol's magazine, health bar, wood and metal
- * carried, a
+ * GameHud — crosshair (which flashes on a hit), the tools to pick from,
+ * the rounds in the pistol's magazine or the piece to build, health bar,
+ * wood and metal carried, a
  * red flash and an arc pointing at the attacker when hurt and the death
  * notice, shown while playing; and brief toasts, shown whenever.
  */
 
 import { type Tool, TOOLS } from './Arsenal';
+import { type PieceKind, PIECES } from './Blueprint';
+import { PIECE_COST } from './Builder';
 import type { Material } from './Loot';
 import type { Weapon } from './Weapon';
 
@@ -17,6 +19,8 @@ const TOAST_TIME = 1.5;
 const POINTER_TIME = 1.2;
 const BRASS = 'rgba(232,196,110,0.95)';
 const SPENT = 'rgba(255,255,255,0.3)';
+const LIT = 'rgba(255,255,255,0.95)';
+const UNLIT = 'rgba(255,255,255,0.45)';
 const MATERIAL_COLOR: Record<Material, string> = { wood: 'rgb(176,124,74)', metal: 'rgb(170,180,190)' };
 
 function div(css: string[], parent?: HTMLElement): HTMLDivElement {
@@ -65,6 +69,18 @@ export class GameHud {
   private readonly slotLabels = TOOLS.map((tool, i) => {
     const d = div([], this.slots);
     d.textContent = `${i + 1} ${tool[0]!.toUpperCase()}${tool.slice(1)}`;
+    return d;
+  });
+  private readonly pieces = div(
+    [
+      'position:absolute', 'right:28px', 'bottom:24px', 'display:none', 'gap:14px', 'font-size:14px',
+      'text-shadow:0 1px 3px rgba(0,0,0,0.7)',
+    ],
+    this.root,
+  );
+  private readonly pieceLabels = PIECES.map((kind) => {
+    const d = div([], this.pieces);
+    d.textContent = `${kind[0]!.toUpperCase()}${kind.slice(1)}`;
     return d;
   });
   private holding: Tool = TOOLS[0]!;
@@ -118,6 +134,7 @@ export class GameHud {
       this.pointer,
     );
     this.notice.textContent = 'You died';
+    div(['color:rgba(255,255,255,0.6)'], this.pieces).textContent = `R next · ${PIECE_COST} wood`;
     document.body.append(this.root, this.toastBox);
   }
 
@@ -129,15 +146,25 @@ export class GameHud {
     this.notice.style.display = on ? 'block' : 'none';
     this.dot.style.display = on ? 'none' : 'block';
     this.ammo.style.display = on || this.holding !== 'pistol' ? 'none' : 'flex';
+    this.pieces.style.display = on || this.holding !== 'build' ? 'none' : 'flex';
   }
 
-  /** the tool in hand: lit among the slots, with the ammo for the pistol */
+  /** the tool in hand: lit among the slots, with the ammo for the pistol
+   *  or the pieces for building */
   tool(tool: Tool): void {
     this.holding = tool;
     this.slotLabels.forEach((d, i) => {
-      d.style.color = TOOLS[i] === tool ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)';
+      d.style.color = TOOLS[i] === tool ? LIT : UNLIT;
     });
     this.ammo.style.display = tool === 'pistol' ? 'flex' : 'none';
+    this.pieces.style.display = tool === 'build' ? 'flex' : 'none';
+  }
+
+  /** the piece to build next */
+  piece(kind: PieceKind): void {
+    this.pieceLabels.forEach((d, i) => {
+      d.style.color = PIECES[i] === kind ? LIT : UNLIT;
+    });
   }
 
   update(weapon: Weapon): void {

@@ -130,6 +130,19 @@ await page.waitForTimeout(500);
 const metal = ((await page.evaluate('window.__laasDbg.game.carried')) as { metal: number }).metal;
 check(metal >= 2, `walking over a wreck's scrap picks it up (${metal} metal)`);
 
+// from the middle of a cell, so the wall ahead can't cut through the player
+await page.evaluate(`(() => {
+  const a = window.__laasDbg.game.attached; const f = a.motor.feet;
+  a.player.spawn((Math.floor(f.x / 4) + 0.5) * 4, f.y + 0.5, (Math.floor(f.z / 4) + 0.5) * 4, 0, 0);
+  a.carried.wood = 10;
+})()`);
+await page.keyboard.press('Digit3');
+await page.waitForTimeout(800);
+await page.mouse.click(640, 400);
+await page.waitForTimeout(200);
+const built = (await page.evaluate(`(() => { const a = window.__laasDbg.game.attached; return [a.building.count, a.carried.wood]; })()`)) as number[];
+check(built[0] === 1 && built[1] === 5, `3 then a click builds a wall for wood (${built[0]} built, ${built[1]} wood left)`);
+
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 
 await browser.close();

@@ -1,9 +1,11 @@
 /**
  * Arms — the player's hands: the tool picked in the Arsenal, used through
- * Gunplay (the pistol) or Melee (the axe), and drawn by the viewmodel.
+ * Gunplay (the pistol), Melee (the axe) or the Builder, and drawn by the
+ * viewmodel.
  */
 
 import { Arsenal, type ArsenalInput } from './Arsenal';
+import type { Builder } from './Builder';
 import type { GameHud } from './GameHud';
 import type { Gunplay } from './Gunplay';
 import type { Melee, Swing } from './Melee';
@@ -16,6 +18,7 @@ export interface ArmsParts {
   weapon: Weapon;
   melee: Melee;
   swing: Swing;
+  builder: Builder;
   viewmodel: Viewmodel;
   hud: GameHud;
 }
@@ -33,6 +36,7 @@ export class Arms {
     // a swing cut short by death or flying mustn't land when play resumes
     this.parts.swing.reset();
     this.arsenal.settle();
+    if (!on) this.parts.builder.hide();
   }
 
   /** before the camera rig, so recoil shows in this frame's view; true
@@ -43,9 +47,11 @@ export class Arms {
       this.parts.swing.reset();
       this.parts.hud.tool(arsenal.current);
     }
+    if (!arsenal.ready || arsenal.current !== 'build') this.parts.builder.hide();
     if (!arsenal.ready) return false;
     if (arsenal.current === 'pistol') return this.parts.gunplay.update(dt, input, player);
-    this.parts.melee.update(dt, input, player);
+    if (arsenal.current === 'axe') this.parts.melee.update(dt, input, player);
+    else this.parts.builder.update(input, player);
     return false;
   }
 
