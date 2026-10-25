@@ -17,6 +17,7 @@ import redBarrelUrl from '../../assets/models/props/red_barrel.glb?url';
 import tyreUrl from '../../assets/models/props/tyre.glb?url';
 import woodCrateUrl from '../../assets/models/props/wood_crate.glb?url';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
+import { highlight } from '../render/Highlight';
 import { lightWithProbes } from '../render/ProbeLighting';
 import type { Box } from './Box';
 import type { Prop, PropKind } from './PropPlan';
@@ -52,7 +53,7 @@ const P = new Vector3();
 const Q = new Quaternion();
 const ONE = new Vector3(1, 1, 1);
 
-function nodeMaterial(src: MeshStandardMaterial, gi: ProbeGI | null, canopyTex: StorageTexture | null): MeshStandardNodeMaterial {
+function nodeMaterial(src: MeshStandardMaterial, gi: ProbeGI | null, canopyTex: StorageTexture | null, lit: boolean): MeshStandardNodeMaterial {
   const mat = new MeshStandardNodeMaterial({
     color: src.color,
     map: src.map,
@@ -63,6 +64,7 @@ function nodeMaterial(src: MeshStandardMaterial, gi: ProbeGI | null, canopyTex: 
     metalness: src.metalness,
     side: src.side,
   });
+  if (lit) mat.emissiveNode = highlight();
   if (gi) lightWithProbes(mat, gi, canopyTex);
   return mat;
 }
@@ -79,7 +81,13 @@ export class Props {
     this.byKind = new Map(kinds.map((k) => [k.kind, k]));
   }
 
-  static async load(props: Prop[], gi: ProbeGI | null, canopyTex: StorageTexture | null): Promise<Props> {
+  /** `highlighted` kinds wear the pick-up rim (see Highlight) */
+  static async load(
+    props: Prop[],
+    gi: ProbeGI | null,
+    canopyTex: StorageTexture | null,
+    highlighted: ReadonlySet<PropKind> = new Set(),
+  ): Promise<Props> {
     const loader = new GLTFLoader();
     const used = [...new Set(props.map((p) => p.kind))];
     const kinds = await Promise.all(
@@ -92,7 +100,7 @@ export class Props {
         gltf.scene.traverse((o) => {
           if (!(o instanceof Mesh)) return;
           const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
-          const mesh = new InstancedMesh(geo, nodeMaterial(o.material as MeshStandardMaterial, gi, canopyTex), placed.length);
+          const mesh = new InstancedMesh(geo, nodeMaterial(o.material as MeshStandardMaterial, gi, canopyTex, highlighted.has(kind)), placed.length);
           mesh.count = 0;
           mesh.castShadow = true;
           mesh.receiveShadow = true;

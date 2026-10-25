@@ -33,7 +33,7 @@ import { beaconBoxes, planCheckpoints } from '../world/CheckpointPlan';
 import { clearingTexture, settlementClearings, trail } from '../world/Clearing';
 import { planEnemies } from '../world/EnemyPlan';
 import { Places } from '../world/Places';
-import { planProps } from '../world/PropPlan';
+import { planProps, type PropKind } from '../world/PropPlan';
 import type { GameWorld } from '../game/Game';
 import { CACHE_LOOT } from '../game/Loot';
 import { Pickups } from '../game/Pickups';
@@ -268,7 +268,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     const ruinGi = ablate.has('gi') ? null : gi;
     const [ruins, propField] = await Promise.all([
       buildRuins(ruinBlocks, ground, ruinGi, canopyTex),
-      Props.load(props, ruinGi, canopyTex),
+      Props.load(props, ruinGi, canopyTex, new Set(Object.keys(CACHE_LOOT) as PropKind[])),
     ]);
     engine.scene.add(ruins, propField.group);
     if (checkpoints.length) {

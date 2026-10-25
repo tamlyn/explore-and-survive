@@ -1,16 +1,17 @@
 /**
  * Pickups rendering — loot dropped on the ground, turning slowly and
  * bobbing just above it: a white medkit with a glowing red cross, a plate
- * of rusty scrap metal and a log. One instanced mesh per kind, with a slot
- * per drop Loot allows.
+ * of rusty scrap metal and a log, each rimmed with the pick-up highlight.
+ * One instanced mesh per kind, with a slot per drop Loot allows.
  */
 
 import { BoxGeometry, type BufferGeometry, CylinderGeometry, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
-import { float, max, mix, positionGeometry, sin, smoothstep, time, vec3 } from 'three/tsl';
+import { float, max, mix, normalGeometry, positionGeometry, sin, smoothstep, time, vec3 } from 'three/tsl';
 import { fbm3 } from '../gpu/noise/NoiseTSL';
 import { MeshStandardNodeMaterial, type StorageTexture } from 'three/webgpu';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import type { NF, NV3 } from '../gpu/TSLTypes';
+import { highlight } from '../render/Highlight';
 import { lightWithProbes } from '../render/ProbeLighting';
 import { type DropView, type LootKind, MAX_DROPS } from './Loot';
 
@@ -41,7 +42,7 @@ const LOOKS: Record<LootKind, { geometry: () => BufferGeometry; look: Look }> = 
     geometry: () => new BoxGeometry(0.3, 0.05, 0.22),
     look: (p, _pulse, mat) => {
       const rust = smoothstep(0.45, 0.65, fbm3(p.mul(18), 3) as NF);
-      mat.colorNode = mix(vec3(0.55, 0.57, 0.6), vec3(0.32, 0.14, 0.06), rust);
+      mat.colorNode = mix(vec3(0.3, 0.31, 0.33), vec3(0.14, 0.05, 0.015), rust);
       mat.roughnessNode = mix(float(0.35), float(0.9), rust);
       mat.metalnessNode = mix(float(0.9), float(0.2), rust);
     },
@@ -50,9 +51,9 @@ const LOOKS: Record<LootKind, { geometry: () => BufferGeometry; look: Look }> = 
     geometry: () => new CylinderGeometry(0.09, 0.1, 0.5, 10).rotateZ(Math.PI / 2),
     look: (p, _pulse, mat) => {
       // bark along the log, pale end grain at the cut ends
-      const ends = smoothstep(0.23, 0.245, p.x.abs());
-      const bark = vec3(0.24, 0.16, 0.1).mul((fbm3(p.mul(vec3(4, 30, 30)), 3) as NF).mul(0.6).add(0.6));
-      mat.colorNode = mix(bark, vec3(0.62, 0.48, 0.3), ends);
+      const ends = smoothstep(0.5, 0.9, (normalGeometry as unknown as NV3).x.abs());
+      const bark = vec3(0.05, 0.032, 0.018).mul((fbm3(p.mul(vec3(4, 30, 30)), 3) as NF).mul(0.6).add(0.6));
+      mat.colorNode = mix(bark, vec3(0.38, 0.24, 0.11), ends);
       mat.roughnessNode = float(0.9);
       mat.metalnessNode = float(0);
     },
@@ -84,6 +85,7 @@ export class Pickups implements DropView {
       const { geometry, look } = LOOKS[kind];
       const mat = new MeshStandardNodeMaterial();
       look(positionGeometry as unknown as NV3, pulse, mat);
+      mat.emissiveNode = mat.emissiveNode ? (mat.emissiveNode as NV3).add(highlight()) : highlight();
       if (gi) lightWithProbes(mat, gi, canopyTex);
       const mesh = new InstancedMesh(geometry(), mat, MAX_DROPS);
       mesh.name = `pickups:${kind}`;
