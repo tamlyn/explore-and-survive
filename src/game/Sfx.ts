@@ -5,6 +5,7 @@
  * distance and pan by bearing from the listener.
  */
 
+import type { Surface } from './Physics';
 import type { Vec3 } from './PlayerMotor';
 
 /** a world sound halves in loudness this far away (m) */
@@ -108,6 +109,67 @@ export class Sfx {
       osc.start(t + delay);
       osc.stop(t + delay + 0.65);
     }
+  }
+
+  /** the axe through the air: a falling hiss */
+  whoosh(): void {
+    const ctx = this.context();
+    const t = ctx.currentTime + 0.12;
+    const src = this.noiseSource(ctx);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.5;
+    bp.frequency.setValueAtTime(1800, t);
+    bp.frequency.exponentialRampToValueAtTime(500, t + 0.15);
+    src.connect(bp).connect(envelope(ctx, t, 0.35, 0.16)).connect(this.output());
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 0.2);
+  }
+
+  /** the axe landing: a thunk in wood, a clang on metal or stone */
+  chop(surface: Surface): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const hard = surface === 'metal' || surface === 'stone';
+    const osc = ctx.createOscillator();
+    osc.type = hard ? 'square' : 'sine';
+    osc.frequency.setValueAtTime(hard ? 900 : 180, t);
+    osc.frequency.exponentialRampToValueAtTime(hard ? 600 : 70, t + 0.12);
+    osc.connect(envelope(ctx, t, hard ? 0.25 : 0.8, hard ? 0.3 : 0.14)).connect(this.output());
+    osc.start(t);
+    osc.stop(t + 0.35);
+    const knock = this.noiseSource(ctx);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = hard ? 6000 : 1500;
+    knock.connect(lp).connect(envelope(ctx, t, 0.6, 0.06)).connect(this.output());
+    knock.start(t, Math.random() * 0.5);
+    knock.stop(t + 0.08);
+  }
+
+  /** a tree coming down: a creak, then the crash */
+  timber(at: Vec3): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const out = this.placed(at);
+    const creak = ctx.createOscillator();
+    creak.type = 'sawtooth';
+    creak.frequency.setValueAtTime(90, t);
+    creak.frequency.linearRampToValueAtTime(60, t + 0.6);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 400;
+    creak.connect(lp).connect(envelope(ctx, t, 0.3, 0.7)).connect(out);
+    creak.start(t);
+    creak.stop(t + 0.7);
+    const crash = this.noiseSource(ctx);
+    const rumble = ctx.createBiquadFilter();
+    rumble.type = 'lowpass';
+    rumble.frequency.setValueAtTime(900, t + 0.6);
+    rumble.frequency.exponentialRampToValueAtTime(120, t + 1.4);
+    crash.connect(rumble).connect(envelope(ctx, t + 0.6, 0.9, 0.9)).connect(out);
+    crash.start(t + 0.6, Math.random() * 0.2);
+    crash.stop(t + 1.5);
   }
 
   /** something picked up: a quick rising blip */

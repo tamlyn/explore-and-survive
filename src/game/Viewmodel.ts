@@ -1,19 +1,22 @@
 /**
- * Viewmodel — the first-person gun. It lives in its own small scene with its
- * own camera, which the post stack lays over the world (see Overlay): the
- * gun can't clip into trunks, keeps a steady FOV through the sprint kick and
- * isn't smeared by the world's TRAA. The world's sun, ambient and
- * environment are mirrored onto it each frame so it sits in the same light,
- * minus shadows.
+ * Viewmodel — the tool in the player's hand, pistol or axe. It lives in its
+ * own small scene with its own camera, which the post stack lays over the
+ * world (see Overlay): the tool can't clip into trunks, keeps a steady FOV
+ * through the sprint kick and isn't smeared by the world's TRAA. The
+ * world's sun, ambient and environment are mirrored onto it each frame so
+ * it sits in the same light, minus shadows.
  *
  * All motion here is presentation: kick, look sway, walk bob, the sprint
- * carry pose and a reload dip (the model has no animation rig).
+ * carry pose, a reload dip, the axe's swing and the dip while changing
+ * tools (the models have no animation rig).
  */
 
 import type { HemisphereLight, Object3D, PerspectiveCamera as MainCamera } from 'three';
 import {
   Box3,
+  BoxGeometry,
   CustomBlending,
+  CylinderGeometry,
   DirectionalLight,
   DoubleSide,
   Float32BufferAttribute,
@@ -30,11 +33,12 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { atan, attribute, cos, float, length, mix, uv, vec3 } from 'three/tsl';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import pistolUrl from '../../assets/models/pistol.glb?url';
 import { type Spring, stepSpring } from '../core/Spring';
 import { runiform } from '../gpu/RenderUniform';
 import type { NF } from '../gpu/TSLTypes';
+import type { Tool } from './Arsenal';
 import { WALK_SPEED } from './Player';
 
 const GUN_LENGTH = 0.2; // m, muzzle to hammer
@@ -47,6 +51,13 @@ const FLASH_TIME = 0.05;
 const FLASH_HDR = 60;
 /** how far the flash's flame reaches past the muzzle (m) */
 const TONGUE_LENGTH = 0.14;
+/** the axe's grip, and its lean: head a little forward and inward */
+const AXE_REST = new Vector3(0.2, -0.3, -0.42);
+const AXE_TILT = { x: -0.55, z: 0.3 };
+/** where in a swing (0 → 1) the wind-up ends and the blow lands; matches
+ *  AXE's strikeAt / swingTime */
+const AXE_WOUND = 0.28;
+const AXE_LANDED = 0.42;
 const KICK_K = 260; // recoil spring stiffness
 const KICK_C = 26; // recoil spring damping
 /** how much of the sun and the sky light deep canopy takes away */
@@ -59,6 +70,15 @@ const SKY_ENV = 0.3;
 export interface WorldLights {
   sun: DirectionalLight;
   ambient: HemisphereLight;
+}
+
+/** what the hand is doing; the phases run 0 → 1, and are 0 when idle */
+export interface ToolPose {
+  tool: Tool;
+  reload: number;
+  swing: number;
+  /** 0 in hand … 1 out of sight, while changing tools */
+  lowered: number;
 }
 
 export interface ViewmodelSubject {
@@ -80,6 +100,7 @@ export class Viewmodel {
   private readonly sun = new DirectionalLight();
   private readonly ambient = new Hemi();
   private readonly holder = new Group(); // posed each frame
+  private readonly tools: Record<Tool, Group> = { pistol: new Group(), axe: axeModel() };
   private readonly flash: Mesh;
   private readonly flashIntensity = runiform(0);
   private flashLeft = 0;
@@ -99,6 +120,7 @@ export class Viewmodel {
   ) {
     this.scene.add(this.camera, this.sun, this.sun.target, this.ambient);
     this.camera.add(this.holder);
+    this.holder.add(this.tools.pistol, this.tools.axe);
     this.flash = muzzleFlash(this.flashIntensity);
     this.flash.visible = false;
   }
@@ -119,10 +141,9 @@ export class Viewmodel {
       o.castShadow = false;
     });
     this.flash.position.copy(muzzlePoint(model));
-    const gun = new Group();
+    const gun = this.tools.pistol;
     gun.rotation.y = Math.PI / 2; // +x → −z (forward)
     gun.add(model, this.flash);
-    this.holder.add(gun);
   }
 
   /** settle all motion — on (re-)entering play, when the aim may have jumped */
@@ -142,12 +163,11 @@ export class Viewmodel {
     this.flash.scale.setScalar(0.8 + Math.random() * 0.4);
   }
 
-  /** `reload` runs 0 → 1 through a reload, 0 otherwise */
-  update(dt: number, p: ViewmodelSubject, reload: number): void {
+  update(dt: number, p: ViewmodelSubject, pose: ToolPose): void {
     this.canopyK += (this.canopy - this.canopyK) * (1 - Math.exp(-dt * 3));
     this.syncWorld();
 
-    // look sway: the gun lags the aim a little, then catches up
+    // look sway: the tool lags the aim a little, then catches up
     if (this.lastYaw === null) {
       this.lastYaw = p.yaw;
       this.lastPitch = p.pitch;
@@ -168,18 +188,29 @@ export class Viewmodel {
 
     stepSpring(this.kick, KICK_K, KICK_C, dt);
 
-    const dip = Math.sin(Math.PI * reload);
+    for (const [tool, model] of Object.entries(this.tools)) model.visible = tool === pose.tool;
     const h = this.holder;
+    // what every tool shares: bob, sway, the sprint carry and the change dip
     h.position.set(
-      REST.x + Math.sin(this.bobPhase) * 0.006 * this.bobK + this.swayX * 0.4 - this.sprintK * 0.03,
-      REST.y - Math.abs(Math.cos(this.bobPhase)) * 0.006 * this.bobK - this.swayY * 0.4 - this.sprintK * 0.04 - dip * 0.07,
-      REST.z + this.kick.x * 0.012,
+      Math.sin(this.bobPhase) * 0.006 * this.bobK + this.swayX * 0.4 - this.sprintK * 0.03,
+      -Math.abs(Math.cos(this.bobPhase)) * 0.006 * this.bobK - this.swayY * 0.4 - this.sprintK * 0.04 - pose.lowered * 0.3,
+      0,
     );
-    h.rotation.set(
-      this.kick.x * 0.06 - this.sprintK * 0.5 - dip * 0.6,
-      REST_YAW + this.swayX + this.sprintK * 0.5,
-      dip * 0.5,
-    );
+    h.rotation.set(-this.sprintK * 0.5 - pose.lowered, this.swayX + this.sprintK * 0.5, 0);
+    if (pose.tool === 'pistol') {
+      const dip = Math.sin(Math.PI * pose.reload);
+      h.position.add(REST);
+      h.position.y -= dip * 0.07;
+      h.position.z += this.kick.x * 0.012;
+      h.rotation.x += this.kick.x * 0.06 - dip * 0.6;
+      h.rotation.y += REST_YAW;
+      h.rotation.z += dip * 0.5;
+    } else {
+      const sw = axeSwing(pose.swing);
+      h.position.add(AXE_REST).add(sw.at);
+      h.rotation.x += AXE_TILT.x + sw.rx;
+      h.rotation.z += AXE_TILT.z + sw.rz;
+    }
 
     // aged after drawing, so a frame slower than the flash still shows it
     this.flash.visible = this.flashLeft > 0;
@@ -207,6 +238,51 @@ export class Viewmodel {
     this.ambient.groundColor.copy(l.ambient.groundColor);
     this.ambient.intensity = l.ambient.intensity * sky;
   }
+}
+
+function smooth(a: number, b: number, t: number): number {
+  const u = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return u * u * (3 - 2 * u);
+}
+
+/** the axe through a swing (0 → 1): raised and cocked back, brought down
+ *  hard across to the left, then back to rest */
+const SWING_AT = new Vector3();
+
+function axeSwing(s: number): { at: Vector3; rx: number; rz: number } {
+  if (s <= 0) return { at: SWING_AT.set(0, 0, 0), rx: 0, rz: 0 };
+  const wind = smooth(0, AXE_WOUND, s);
+  const blow = smooth(AXE_WOUND, AXE_LANDED, s);
+  const back = smooth(AXE_LANDED + 0.1, 1, s);
+  // wound up → struck, then fading back to rest
+  const up = wind * (1 - blow);
+  const down = blow * (1 - back);
+  return {
+    at: SWING_AT.set(-0.09 * down, 0.07 * up - 0.1 * down, 0.04 * up - 0.06 * down),
+    rx: 1.0 * up - 1.3 * down,
+    rz: 0.25 * up + 0.35 * down,
+  };
+}
+
+/** a hatchet with its grip at the origin: the handle up +y, the blade's
+ *  edge forward (−z) */
+function axeModel(): Group {
+  const wood = new MeshStandardNodeMaterial({ color: 0x6e4a2a, roughness: 0.8 });
+  const steel = new MeshStandardNodeMaterial({ color: 0x7d8288, roughness: 0.45, metalness: 0.85 });
+  const edge = new MeshStandardNodeMaterial({ color: 0xc9cdd2, roughness: 0.25, metalness: 0.9 });
+  const part = (geo: BoxGeometry | CylinderGeometry, mat: MeshStandardNodeMaterial, x: number, y: number, z: number): Mesh => {
+    const m = new Mesh(geo, mat);
+    m.position.set(x, y, z);
+    return m;
+  };
+  const axe = new Group();
+  axe.add(
+    part(new CylinderGeometry(0.011, 0.014, 0.4, 8), wood, 0, 0.12, 0),
+    part(new BoxGeometry(0.02, 0.06, 0.085), steel, 0, 0.29, -0.04),
+    part(new BoxGeometry(0.014, 0.085, 0.02), edge, 0, 0.29, -0.09),
+    part(new BoxGeometry(0.026, 0.04, 0.035), steel, 0, 0.29, 0.016),
+  );
+  return axe;
 }
 
 function clamp(v: number, max: number): number {

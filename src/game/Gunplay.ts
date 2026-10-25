@@ -35,11 +35,6 @@ export class Gunplay {
     private readonly shooter: RAPIER.Collider,
   ) {}
 
-  set active(on: boolean) {
-    this.parts.viewmodel.scene.visible = on;
-    this.parts.hud.visible = on;
-  }
-
   /** before the camera rig, so recoil shows in this frame's view; true
    *  when a round was fired */
   update(dt: number, input: PlayerInput, player: Player): boolean {
@@ -57,11 +52,6 @@ export class Gunplay {
     }
     hud.update(weapon);
     return event === 'fire';
-  }
-
-  /** after the camera rig: the viewmodel follows the posed camera */
-  updateView(dt: number, player: Player): void {
-    this.parts.viewmodel.update(dt, player, this.parts.weapon.reloadProgress);
   }
 
   private fire(player: Player): void {

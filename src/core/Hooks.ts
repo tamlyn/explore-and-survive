@@ -63,6 +63,9 @@ export interface LaasHooks {
   settle: ((frames?: number) => Promise<void>) | null;
   /** enable/disable fly-camera input (flythrough takes the wheel) */
   flyCamEnabled: ((on: boolean) => void) | null;
+  /** true while the player has control (number keys pick weapons then,
+   *  not bookmarks) */
+  playing: (() => boolean) | null;
 }
 
 declare global {
@@ -87,6 +90,7 @@ export function initHooks(): LaasHooks {
     setTimeOfDay: null,
     settle: null,
     flyCamEnabled: null,
+    playing: null,
   };
   window.__laas = hooks;
   return hooks;

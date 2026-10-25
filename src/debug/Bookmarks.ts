@@ -86,7 +86,7 @@ export function installBookmarks(
 
   window.addEventListener('keydown', (e) => {
     const m = /^Digit([1-9])$/.exec(e.code);
-    if (m) apply(Number(m[1]) - 1);
+    if (m && !hooks.playing?.()) apply(Number(m[1]) - 1);
     if (e.code === 'KeyF') fly.toggle();
   });
 

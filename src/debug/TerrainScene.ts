@@ -373,6 +373,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       spawn: { x: spawn.x, z: spawn.z, yaw: SPAWN_YAW },
       places: new Places(ruinSites, props, checkpoints),
       ...(obstacles ? { obstacles } : {}),
+      ...(forestsRef ? { trees: forestsRef } : {}),
       ...(beacons ? { checkpoints: { spots: checkpoints, view: beacons } } : {}),
       ...(loot ? { loot } : {}),
       ...(robotModels ? { enemies: { spawns: enemySpawns, views: robotModels } } : {}),

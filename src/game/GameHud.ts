@@ -1,10 +1,12 @@
 /**
- * GameHud — crosshair (which flashes on a hit), the rounds in the
- * magazine, health bar, wood and metal carried, a
+ * GameHud — crosshair (which flashes on a hit), the tools to pick from
+ * and the rounds in the pistol's magazine, health bar, wood and metal
+ * carried, a
  * red flash and an arc pointing at the attacker when hurt and the death
  * notice, shown while playing; and brief toasts, shown whenever.
  */
 
+import { type Tool, TOOLS } from './Arsenal';
 import type { Material } from './Loot';
 import type { Weapon } from './Weapon';
 
@@ -53,6 +55,19 @@ export class GameHud {
     this.root,
   );
   private readonly rounds = div(['display:flex', 'align-items:flex-end', 'gap:3px'], this.ammo);
+  private readonly slots = div(
+    [
+      'position:absolute', 'right:28px', 'bottom:56px', 'display:flex', 'gap:14px', 'font-size:14px',
+      'text-shadow:0 1px 3px rgba(0,0,0,0.7)',
+    ],
+    this.root,
+  );
+  private readonly slotLabels = TOOLS.map((tool, i) => {
+    const d = div([], this.slots);
+    d.textContent = `${i + 1} ${tool[0]!.toUpperCase()}${tool.slice(1)}`;
+    return d;
+  });
+  private holding: Tool = TOOLS[0]!;
   private readonly bar = div(
     ['position:absolute', 'left:28px', 'bottom:28px', 'width:200px', 'height:8px', 'background:rgba(0,0,0,0.4)', 'box-shadow:0 1px 3px rgba(0,0,0,0.5)'],
     this.root,
@@ -113,7 +128,16 @@ export class GameHud {
   set dead(on: boolean) {
     this.notice.style.display = on ? 'block' : 'none';
     this.dot.style.display = on ? 'none' : 'block';
-    this.ammo.style.display = on ? 'none' : 'flex';
+    this.ammo.style.display = on || this.holding !== 'pistol' ? 'none' : 'flex';
+  }
+
+  /** the tool in hand: lit among the slots, with the ammo for the pistol */
+  tool(tool: Tool): void {
+    this.holding = tool;
+    this.slotLabels.forEach((d, i) => {
+      d.style.color = TOOLS[i] === tool ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)';
+    });
+    this.ammo.style.display = tool === 'pistol' ? 'flex' : 'none';
   }
 
   update(weapon: Weapon): void {

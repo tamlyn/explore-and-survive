@@ -2,7 +2,7 @@
  * Smoke test — boots the default game spawn and checks the player actually
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
- * reloads, beacons can be claimed, scrap can be picked up, and nothing
+ * reloads, the axe can be picked, beacons can be claimed, scrap can be picked up, and nothing
  * throws.
  * Needs the dev server (LAAS_URL, default :5173).
  *
@@ -83,6 +83,14 @@ const reloading = await ammo();
 await page.waitForTimeout(1500);
 const reloaded = await ammo();
 check(reloading === 'reloading' && reloaded === '12', `R reloads (${reloading} → ${reloaded})`);
+
+await page.keyboard.press('Digit2');
+await page.waitForTimeout(600);
+const held = (await page.evaluate('window.__laasDbg.game.attached.arms.arsenal.current')) as string;
+await page.keyboard.press('Digit1');
+await page.waitForTimeout(600);
+const back = (await page.evaluate('window.__laasDbg.game.attached.arms.arsenal.current')) as string;
+check(held === 'axe' && back === 'pistol', `2 and 1 pick the axe and the pistol (${held} → ${back})`);
 
 // mouse down looks down, or up once Y inverts it
 const pitchAfterDrag = async (): Promise<number> => {

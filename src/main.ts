@@ -98,6 +98,7 @@ async function boot(): Promise<void> {
 
   hooks.setPose = (p) => game.setPose(p);
   hooks.getPose = () => game.getPose();
+  hooks.playing = () => game.mode === 'play';
   hooks.settle = (frames?: number) => engine.settle(frames ?? 8);
   hooks.flyCamEnabled = (on) => {
     game.input.enabled = on;

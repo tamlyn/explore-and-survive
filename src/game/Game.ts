@@ -1,6 +1,7 @@
 /**
  * Game — owns input and decides who drives the camera: the player (normal
- * play, armed — see Gunplay) or the free-fly camera (debug/tooling). `V`
+ * play, with a pistol and an axe — see Arms) or the free-fly camera
+ * (debug/tooling). `V`
  * toggles between them, `Y` inverts mouse look, `H` shows the controls.
  * `P` copies a playtest report of where the camera is (as a `?cam=` string,
  * which boots back to it) and what it's looking at, in the names Places and
@@ -11,7 +12,7 @@
  * dying costs a few seconds and puts them back at the last checkpoint they
  * stood by (see Checkpoints), or at the spawn. Medkits come from crates and
  * wrecked robots, which also leave metal (see Loot), and health only
- * regenerates part of the way.
+ * regenerates part of the way. The axe fells trees for wood (see Lumber).
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -34,10 +35,13 @@ import { ControlsCard } from './ControlsCard';
 import { Enemies, type EnemyTarget, type RobotViews, SLEEP_RADIUS } from './Enemies';
 import { FirstPersonRig } from './FirstPersonRig';
 import { GameHud } from './GameHud';
+import { Arms } from './Arms';
 import { Gunplay } from './Gunplay';
+import { Lumber, woodIn } from './Lumber';
+import { AXE, Melee, Swing } from './Melee';
 import { Health } from './Health';
 import { Impacts } from './Impacts';
-import { type Cache, type CacheView, type DropView, Loot, type Material } from './Loot';
+import { type Cache, type CacheView, type DropView, type Haul, Loot, type Material } from './Loot';
 import { ObstacleStreamer, type ObstacleField } from './Obstacles';
 import type { Box } from '../world/Box';
 import { boxColliderDesc, loadRapier, Physics, type Surface, type TerrainGrid } from './Physics';
@@ -69,6 +73,8 @@ export interface GameWorld {
   places?: Places;
   /** a beacon per settlement for the player to find */
   checkpoints?: { spots: Checkpoint[]; view: CheckpointView };
+  /** how a felled tree is hidden: by its slot in the trees scatter layer */
+  trees?: { fell(slot: number): void };
   /** crates with something in them, and how dropped loot is drawn */
   loot?: { caches: Cache[]; cacheView: CacheView; dropView: DropView };
 }
@@ -91,6 +97,8 @@ const LOOK_RANGE = 1000;
 const WORLD_EDGE_MARGIN = 2;
 
 const DOWN = { x: 0, y: -1, z: 0 };
+/** a felled tree's wood comes as logs of up to this much */
+const WOOD_PER_LOG = 3;
 
 /** what a ray stopped on, when nothing more specific stands there */
 const SURFACE_NAMES: Record<ImpactSurface, string> = {
@@ -117,7 +125,7 @@ interface Attached {
   rig: FirstPersonRig;
   obstacles: ObstacleStreamer | null;
   weapon: Weapon;
-  gunplay: Gunplay;
+  arms: Arms;
   impacts: Impacts;
   tracers: Tracers;
   health: Health;
@@ -249,6 +257,38 @@ export class Game {
       { physics, obstacles: world.obstacles, waterAt: world.waterAt },
       motor.collider,
     );
+    const lumber =
+      world.obstacles && obstacles
+        ? new Lumber(
+            {
+              idOf: (c) => obstacles.idOf(c),
+              trunk: (id) => world.obstacles!.trunk(id),
+              remove: (id) => obstacles.remove(id),
+            },
+            (trunk, from) => {
+              world.trees?.fell(trunk.slot);
+              sfx.timber(trunk);
+              // the logs lie on the far side, where it fell
+              const d = Math.hypot(trunk.x - from.x, trunk.z - from.z) || 1;
+              const x = trunk.x + ((trunk.x - from.x) / d) * 1.2;
+              const z = trunk.z + ((trunk.z - from.z) / d) * 1.2;
+              const logs: Haul[] = [];
+              for (let left = woodIn(trunk); left > 0; left -= WOOD_PER_LOG) {
+                logs.push({ kind: 'wood', amount: Math.min(WOOD_PER_LOG, left) });
+              }
+              loot?.scatter(logs, x, groundAt(x, z), z);
+            },
+          )
+        : null;
+    const swing = new Swing(AXE);
+    const arms = new Arms({
+      gunplay,
+      weapon,
+      melee: new Melee({ swing, impacts, sfx, hud }, physics, lumber, motor.collider),
+      swing,
+      viewmodel: this.viewmodel,
+      hud,
+    });
     this.attached = {
       world,
       physics,
@@ -257,7 +297,7 @@ export class Game {
       rig: new FirstPersonRig(this.camera),
       obstacles,
       weapon,
-      gunplay,
+      arms,
       impacts,
       tracers,
       health,
@@ -341,7 +381,7 @@ export class Game {
         // robots act inside the physics tick, so this frame may have killed
         if (a.health.dead) this.die(a);
         else {
-          if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
+          if (a.arms.update(dt, input, player)) a.enemies?.hear(player.eye);
           this.reachCheckpoint(a);
           this.collect(a);
           a.loot?.update(dt, a.motor.feet);
@@ -350,7 +390,7 @@ export class Game {
       a.rig.update(dt, player);
       const trunks = a.world.obstacles?.trunksNear(player.eye.x, player.eye.z, CANOPY_R) ?? 0;
       this.viewmodel.canopy = Math.min(1, trunks / CANOPY_TRUNKS);
-      a.gunplay.updateView(dt, player);
+      a.arms.updateView(dt, player);
       a.health.update(dt);
       a.hud.updateVitals(dt, a.health.hp, a.health.max);
       a.radar.update(player.eye.x, player.eye.z, player.yaw);
@@ -370,7 +410,7 @@ export class Game {
 
   private die(a: Attached): void {
     a.deadFor = 0;
-    a.gunplay.active = false;
+    a.arms.active = false;
     a.hud.visible = true;
     a.hud.dead = true;
   }
@@ -417,7 +457,7 @@ export class Game {
     a.weapon.restock();
     a.enemies?.forget();
     a.hud.dead = false;
-    a.gunplay.active = true;
+    a.arms.active = true;
   }
 
   private spotNear(a: Attached, x: number, z: number): Vec3 {
@@ -452,7 +492,7 @@ export class Game {
     }
     this.viewmodel.reset();
     this.modeV = 'play';
-    a.gunplay.active = true;
+    a.arms.active = true;
     // eslint-disable-next-line no-console
     console.log('[laas] control: play (V toggles fly)');
   }
@@ -461,7 +501,7 @@ export class Game {
   setPose(pose: CamPose): void {
     if (this.modeV === 'play') {
       this.modeV = 'fly';
-      if (this.attached) this.attached.gunplay.active = false;
+      if (this.attached) this.attached.arms.active = false;
       // eslint-disable-next-line no-console
       console.log('[laas] control: fly (V toggles play)');
     }
