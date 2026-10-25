@@ -7,6 +7,7 @@
 import { ACESFilmicToneMapping, PerspectiveCamera, Scene } from 'three';
 import { TimestampQuery, WebGPURenderer } from 'three/webgpu';
 import { buildRequiredLimits } from './Diagnostics';
+import { FrameRate } from './FrameRate';
 import { installMaterialKeyMemo } from '../render/ThreePatches';
 import { installPositionInvariance } from '../render/VegPrepass';
 import { GpuProfiler } from './GpuProfiler';
@@ -36,7 +37,7 @@ export class Engine {
   private updateFns: UpdateFn[] = [];
   private lastT: number | null = null;
   private frameMsRing: number[] = [];
-  private fpsEma = 0;
+  private readonly frameRate = new FrameRate();
   private frameCounter = 0;
   private settleWaiters: { frames: number; resolve: () => void }[] = [];
   private timestampsSupported = false;
@@ -175,10 +176,7 @@ export class Engine {
     if (this.frameMsRing.length > P95_WINDOW) this.frameMsRing.shift();
     const sorted = [...this.frameMsRing].sort((a, b) => a - b);
     const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? ms;
-    const fpsNow = rawDt > 0 ? 1 / rawDt : 0;
-    this.fpsEma = this.fpsEma === 0 ? fpsNow : this.fpsEma * 0.95 + fpsNow * 0.05;
-
-    s.fps = this.fpsEma;
+    s.fps = this.frameRate.update(rawDt);
     s.frameMs = ms;
     s.frameMsP95 = p95;
     s.drawCalls = this.renderer.info.render.drawCalls;
