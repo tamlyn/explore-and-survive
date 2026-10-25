@@ -5,6 +5,8 @@ export interface Regen {
   delay: number;
   /** hit points per second */
   rate: number;
+  /** healing stops here; the rest takes a medkit (default: full) */
+  upTo?: number;
 }
 
 export class Health {
@@ -33,7 +35,16 @@ export class Health {
   update(dt: number): void {
     if (!this.regen || this.dead) return;
     this.quiet += dt;
-    if (this.quiet > this.regen.delay) this.hp = Math.min(this.max, this.hp + this.regen.rate * dt);
+    const cap = this.regen.upTo ?? this.max;
+    if (this.quiet > this.regen.delay && this.hp < cap) this.hp = Math.min(cap, this.hp + this.regen.rate * dt);
+  }
+
+  /** restore up to `n` hit points; how many it took */
+  heal(n: number): number {
+    if (this.dead) return 0;
+    const gained = Math.min(n, this.max - this.hp);
+    this.hp += gained;
+    return gained;
   }
 
   reset(): void {

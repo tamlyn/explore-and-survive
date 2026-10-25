@@ -34,6 +34,9 @@ import { clearingTexture, settlementClearings, trail } from '../world/Clearing';
 import { planEnemies } from '../world/EnemyPlan';
 import { Places } from '../world/Places';
 import { planProps } from '../world/PropPlan';
+import type { GameWorld } from '../game/Game';
+import { CACHE_LOOT } from '../game/Loot';
+import { Pickups } from '../game/Pickups';
 import { RobotModels } from '../game/RobotModels';
 import { Props } from '../world/Props';
 import type { Box } from '../world/Box';
@@ -260,6 +263,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   // what the settlements put in the physics world — only what's drawn
   let structures: (Box & { surface: Surface })[] = [];
   let beacons: Beacons | null = null;
+  let loot: GameWorld['loot'];
   if (ruinBlocks.length && view !== 'split') {
     const ruinGi = ablate.has('gi') ? null : gi;
     const [ruins, propField] = await Promise.all([
@@ -272,11 +276,21 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       engine.scene.add(beacons.mesh);
     }
     engine.onUpdate(() => propField.update(engine.camera.position));
+    // crates with loot leave physics when emptied, so the game owns their boxes
+    const crates = props.filter((p) => CACHE_LOOT[p.kind]);
     structures = [
       ...ruinBlocks.flat().filter((b) => b.solid).map((b) => ({ ...b, surface: 'stone' as const })),
-      ...propField.colliders(),
+      ...props.filter((p) => !CACHE_LOOT[p.kind]).map((p) => propField.collider(p)),
       ...checkpoints.flatMap(beaconBoxes),
     ];
+    const pickups = new Pickups(ruinGi, canopyTex);
+    engine.scene.add(...pickups.meshes);
+    engine.onUpdate((dt) => pickups.update(dt));
+    loot = {
+      caches: crates.map((p) => ({ ...CACHE_LOOT[p.kind]!, box: propField.collider(p) })),
+      cacheView: { take: (i) => propField.take(crates[i]!) },
+      dropView: pickups,
+    };
   }
 
   // volumetric clouds (noise bake + sun-shadow map)
@@ -360,6 +374,7 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       places: new Places(ruinSites, props, checkpoints),
       ...(obstacles ? { obstacles } : {}),
       ...(beacons ? { checkpoints: { spots: checkpoints, view: beacons } } : {}),
+      ...(loot ? { loot } : {}),
       ...(robotModels ? { enemies: { spawns: enemySpawns, views: robotModels } } : {}),
     };
   }

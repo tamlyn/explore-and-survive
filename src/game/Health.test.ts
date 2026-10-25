@@ -20,6 +20,18 @@ describe('Health', () => {
     expect(h.hp).toBe(100);
   });
 
+  it('heals only so far on its own, a medkit the rest', () => {
+    const h = new Health(100, { delay: 0, rate: 10, upTo: 40 });
+    h.hurt(80);
+    for (let i = 0; i < 100; i++) h.update(0.1);
+    expect(h.hp).toBe(40);
+    expect(h.heal(50)).toBe(50);
+    expect(h.heal(50)).toBe(10);
+    expect(h.hp).toBe(100);
+    h.update(1);
+    expect(h.hp).toBe(100);
+  });
+
   it('a fresh hit restarts the wait', () => {
     const h = new Health(100, { delay: 2, rate: 10 });
     h.hurt(40);

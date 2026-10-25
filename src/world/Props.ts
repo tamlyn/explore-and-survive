@@ -2,7 +2,8 @@
  * Props rendering — one instanced mesh per model part, holding only the
  * props near the camera: past their draw distance they cover a pixel or
  * two, so the far field costs nothing in the main pass or the shadow
- * cascades. Each prop collides as its model's bounding box.
+ * cascades. Each prop collides as its model's bounding box. A prop can be
+ * taken away (a crate emptied), and is drawn no more.
  */
 
 import { Box3, Group, InstancedMesh, Matrix4, Mesh, type MeshStandardMaterial, Quaternion, Vector3 } from 'three';
@@ -69,10 +70,13 @@ function nodeMaterial(src: MeshStandardMaterial, gi: ProbeGI | null, canopyTex: 
 export class Props {
   readonly group = new Group();
   private readonly last = new Vector3(Infinity, 0, 0);
+  private readonly byKind: Map<PropKind, KindDraw>;
+  private readonly taken = new Set<Prop>();
 
   private constructor(private readonly kinds: KindDraw[]) {
     this.group.name = 'props';
     for (const k of kinds) this.group.add(...k.meshes);
+    this.byKind = new Map(kinds.map((k) => [k.kind, k]));
   }
 
   static async load(props: Prop[], gi: ProbeGI | null, canopyTex: StorageTexture | null): Promise<Props> {
@@ -102,27 +106,17 @@ export class Props {
     return new Props(kinds);
   }
 
-  /** one box per prop, from its model's bounds */
-  colliders(): PropBox[] {
-    const centre = new Vector3();
-    const half = new Vector3();
-    return this.kinds.flatMap(({ kind, placed, bounds }) => {
-      bounds.getCenter(centre);
-      bounds.getSize(half).multiplyScalar(0.5);
-      return placed.map((p) => {
-        const c = centre.clone().applyQuaternion(Q.set(...p.q));
-        return {
-          x: p.x + c.x,
-          y: p.y + c.y,
-          z: p.z + c.z,
-          hx: half.x,
-          hy: half.y,
-          hz: half.z,
-          q: p.q,
-          surface: MODELS[kind].surface,
-        };
-      });
-    });
+  /** the prop's box, from its model's bounds; `p` must be one of those loaded */
+  collider(p: Prop): PropBox {
+    const { bounds } = this.byKind.get(p.kind)!;
+    const c = bounds.getCenter(new Vector3()).applyQuaternion(Q.set(...p.q));
+    const half = bounds.getSize(new Vector3()).multiplyScalar(0.5);
+    return { x: p.x + c.x, y: p.y + c.y, z: p.z + c.z, hx: half.x, hy: half.y, hz: half.z, q: p.q, surface: MODELS[p.kind].surface };
+  }
+
+  take(p: Prop): void {
+    this.taken.add(p);
+    this.last.set(Infinity, 0, 0);
   }
 
   /** draw only what's within each kind's range of the eye */
@@ -132,7 +126,7 @@ export class Props {
     for (const { placed, meshes, range } of this.kinds) {
       let n = 0;
       for (const p of placed) {
-        if (Math.hypot(p.x - eye.x, p.z - eye.z) > range) continue;
+        if (this.taken.has(p) || Math.hypot(p.x - eye.x, p.z - eye.z) > range) continue;
         M.compose(P.set(p.x, p.y, p.z), Q.set(...p.q), ONE);
         for (const mesh of meshes) mesh.setMatrixAt(n, M);
         n++;

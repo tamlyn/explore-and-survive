@@ -10,7 +10,8 @@
  * included, so in fly mode the robots hold still. The player has health;
  * dying costs a few seconds and puts them back at the last checkpoint they
  * stood by (see Checkpoints), or at the spawn, with at least the ammo they
- * started with.
+ * started with. Ammo and medkits come from crates and wrecked robots (see
+ * Loot), and health only regenerates part of the way.
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -35,6 +36,7 @@ import { GameHud } from './GameHud';
 import { Gunplay } from './Gunplay';
 import { Health } from './Health';
 import { Impacts } from './Impacts';
+import { type Cache, type CacheView, type DropView, Loot, type LootKind } from './Loot';
 import { ObstacleStreamer, type ObstacleField } from './Obstacles';
 import type { Box } from '../world/Box';
 import { boxColliderDesc, loadRapier, Physics, type Surface, type TerrainGrid } from './Physics';
@@ -66,6 +68,8 @@ export interface GameWorld {
   places?: Places;
   /** a beacon per settlement for the player to find */
   checkpoints?: { spots: Checkpoint[]; view: CheckpointView };
+  /** crates with something in them, and how dropped loot is drawn */
+  loot?: { caches: Cache[]; cacheView: CacheView; dropView: DropView };
 }
 
 export type ControlMode = 'play' | 'fly';
@@ -74,7 +78,8 @@ export type ControlMode = 'play' | 'fly';
 const CANOPY_TRUNKS = 6;
 const CANOPY_R = 7;
 const PLAYER_HP = 100;
-const PLAYER_REGEN = { delay: 5, rate: 8 };
+/** health comes back on its own only so far; medkits do the rest */
+const PLAYER_REGEN = { delay: 5, rate: 8, upTo: 40 };
 /** dead this long before coming back (s) */
 const RESPAWN_DELAY = 4;
 /** robots aim this far above the player's feet (m) */
@@ -117,6 +122,7 @@ interface Attached {
   sfx: Sfx;
   enemies: Enemies | null;
   checkpoints: Checkpoints | null;
+  loot: Loot | null;
   radar: Radar;
   /** seconds since dying, while dead */
   deadFor: number;
@@ -183,6 +189,7 @@ export class Game {
     const { heights, res, worldSize } = world.terrain;
     const groundAt = (x: number, z: number): number =>
       physics.terrainY(x, z) ?? sampleGrid(heights, res, worldSize, x, z);
+    const loot = world.loot ? this.makeLoot(world.loot, physics) : null;
     const enemies = world.enemies
       ? new Enemies(
           world.enemies.spawns,
@@ -201,7 +208,10 @@ export class Game {
               if (hit && hit.target !== target) impacts.spawn(hit);
               sfx.zap(from);
             },
-            destroyed: (at) => sfx.powerDown(at),
+            destroyed: (at) => {
+              sfx.powerDown(at);
+              loot?.drop(at.x, groundAt(at.x, at.z), at.z);
+            },
           },
         )
       : null;
@@ -248,9 +258,25 @@ export class Game {
       sfx,
       enemies,
       checkpoints,
+      loot,
       radar,
       deadFor: 0,
     };
+  }
+
+  /** an emptied crate leaves the physics world as well as the view */
+  private makeLoot(w: NonNullable<GameWorld['loot']>, physics: Physics): Loot {
+    const colliders = w.caches.map((c) => physics.addCollider(boxColliderDesc(physics.rapier, c.box), c.box.surface));
+    return new Loot(
+      w.caches,
+      {
+        take: (i) => {
+          w.cacheView.take(i);
+          physics.removeCollider(colliders[i]!);
+        },
+      },
+      w.dropView,
+    );
   }
 
   get enemies(): Enemies | null {
@@ -300,6 +326,7 @@ export class Game {
         else {
           if (a.gunplay.update(dt, input, player)) a.enemies?.hear(player.eye);
           this.reachCheckpoint(a);
+          this.collect(a);
         }
       }
       a.rig.update(dt, player);
@@ -337,6 +364,16 @@ export class Game {
     const name = a.world.places?.name(c.site) ?? '';
     a.hud.toast(`Checkpoint ${name} · ${cps.count} of ${cps.total}`);
     a.sfx.chime();
+  }
+
+  private collect(a: Attached): void {
+    const wants = (kind: LootKind): boolean =>
+      kind === 'ammo' ? a.weapon.spare < a.weapon.spec.carry : a.health.hp < a.health.max;
+    for (const haul of a.loot?.reach(a.motor.feet, wants) ?? []) {
+      if (haul.kind === 'ammo') a.hud.toast(`+${a.weapon.addSpare(haul.amount)} rounds`);
+      else a.hud.toast(`+${Math.round(a.health.heal(haul.amount))} health`);
+      a.sfx.pickup();
+    }
   }
 
   /** the body lies still while the world carries on, then back to the last

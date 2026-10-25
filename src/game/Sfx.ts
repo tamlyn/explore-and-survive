@@ -110,6 +110,19 @@ export class Sfx {
     }
   }
 
+  /** something picked up: a quick rising blip */
+  pickup(): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(520, t);
+    osc.frequency.exponentialRampToValueAtTime(1040, t + 0.08);
+    osc.connect(envelope(ctx, t, 0.4, 0.18)).connect(this.output());
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
   /** a gain and pan for a sound at `at`, relative to the listener */
   private placed(at: Vec3): AudioNode {
     const ctx = this.context();

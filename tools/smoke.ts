@@ -2,7 +2,8 @@
  * Smoke test — boots the default game spawn and checks the player actually
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
- * reloads, beacons can be claimed, and nothing throws.
+ * reloads, beacons can be claimed, crates refill the ammo, and nothing
+ * throws.
  * Needs the dev server (LAAS_URL, default :5173).
  *
  *   npm run smoke
@@ -113,6 +114,19 @@ if (beacon) {
   check(claimed === 1, `walking up to a beacon claims it (${claimed} claimed)`);
 } else {
   check(false, 'every world has a checkpoint');
+}
+
+// beside an ammo crate with no spares left: it refills them and goes
+const crate = (await page.evaluate("window.__laasDbg.props.find((p) => p.kind === 'ammoCrates')")) as { x: number; y: number; z: number } | undefined;
+if (crate) {
+  await page.evaluate(`window.__laas.setPose({ p: [${crate.x + 1.6}, ${crate.y + 1.7}, ${crate.z}], yaw: 0, pitch: 0 })`);
+  await page.evaluate('window.__laasDbg.game.weapon.spare = 0');
+  await page.evaluate('window.__laasDbg.game.play()');
+  await page.waitForTimeout(500);
+  const spare = (await page.evaluate('window.__laasDbg.game.weapon.spare')) as number;
+  check(spare === 24, `walking up to an ammo crate refills the spares (${spare} rounds)`);
+} else {
+  check(false, 'the settlements have ammo crates');
 }
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
