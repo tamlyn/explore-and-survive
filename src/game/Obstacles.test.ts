@@ -116,6 +116,25 @@ describe('ObstacleStreamer', () => {
     expect(p.world.colliders.len()).toBe(1 + 2); // terrain + two near obstacles
   });
 
+  it('fells a tree for good, and knows which obstacle a collider is', () => {
+    const p = flatWorld();
+    const field = new ObstacleField([arrays([{ x: 5, z: 0, s: 2, id: 0 }, { x: 0, z: 5, id: 160 }])], TEMPLATES);
+    const streamer = new ObstacleStreamer(p, field, 40);
+    streamer.update(0, 0);
+    p.step();
+    const hit = p.castRay({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, 10);
+    const id = streamer.idOf(hit!.collider)!;
+    expect(field.trunk(id)).toMatchObject({ slot: 0, x: 5, radius: 0.8, height: 16 });
+    expect(field.trunk(1)).toBeNull();
+    streamer.remove(id);
+    expect(streamer.activeCount).toBe(1);
+    expect(field.near(0, 0, 10)).toEqual([1]);
+    streamer.update(50, 0);
+    streamer.update(0, 0);
+    expect(streamer.activeCount).toBe(1);
+    expect(field.castRay(rapier, { x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, 10)).toBeNull();
+  });
+
   it('streamed trunks and rocks block the player', () => {
     const p = flatWorld();
     const field = new ObstacleField(

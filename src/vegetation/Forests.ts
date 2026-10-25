@@ -271,6 +271,11 @@ export class Forests {
   private groupCaps = new Uint32Array(GROUPS);
   private reading = false;
   private frame = 0;
+  /** trees felled but not yet hidden on the GPU, a slot each */
+  private felled: number[] = [];
+  /** float, exact for any slot count the trees layer holds */
+  private fellU = uniform(0);
+  private fellKernel: object | null = null;
   private hud: Record<string, number> = {};
 
   constructor(
@@ -722,6 +727,10 @@ export class Forests {
         const variant = idF.sub(cls.mul(8));
         const info = clsBuf.element(cls.toInt()) as unknown as NV4;
         const scl = A.w;
+        // a felled tree
+        If(scl.lessThanEqual(0), () => {
+          Return();
+        });
         const hgt = info.x.mul(scl);
         const rad = info.y.mul(scl);
         const center = A.xyz.add(vec3(0, 1, 0).mul(hgt.mul(0.5)));
@@ -877,6 +886,12 @@ export class Forests {
     ];
   }
 
+  /** hide tree `slot` (its place in the trees layer) from every ring,
+   *  impostor and shadow, for good */
+  fell(slot: number): void {
+    this.felled.push(slot);
+  }
+
   /** wire the CSM rig (cascade cameras feed the caster cull) */
   setCSM(csm: object | null): void {
     this.csm = csm;
@@ -927,6 +942,13 @@ export class Forests {
         }
       }
     }
+    // one a frame: dispatches in a frame would all see the last uniform
+    const slot = this.felled.shift();
+    if (slot !== undefined) {
+      this.fellU.value = slot;
+      this.fellKernel ??= this.makeFellKernel();
+      renderer.compute(this.fellKernel as Parameters<Renderer['compute']>[0]);
+    }
     for (const k of this.kernels) {
       renderer.compute(k as Parameters<Renderer['compute']>[0]);
     }
@@ -935,6 +957,15 @@ export class Forests {
       this.reading = true;
       void this.readStats(renderer);
     }
+  }
+
+  /** zero the scale of the tree in slot fellU; the cull skips it after */
+  private makeFellKernel(): object {
+    const bufA = this.scatter.trees.bufA;
+    return Fn(() => {
+      const A = bufA.element(uint(this.fellU)) as unknown as NV4;
+      A.assign(vec4(A.xyz, 0));
+    })().compute(1);
   }
 
   /** HUD stats (throttled async readback of the group counters) */

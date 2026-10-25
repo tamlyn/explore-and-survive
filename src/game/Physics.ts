@@ -27,6 +27,7 @@ export interface RayHit {
   /** null for colliders added without a surface (the player) */
   surface: Surface | null;
   target: Hittable | null;
+  collider: RAPIER.Collider;
 }
 
 /** CPU copy of the render heightfield: sample (i, j) sits at
@@ -130,6 +131,7 @@ export class Physics {
       distance: hit.timeOfImpact,
       surface: this.surfaces.get(hit.collider.handle) ?? null,
       target: this.targets.get(hit.collider.handle) ?? null,
+      collider: hit.collider,
     };
   }
 

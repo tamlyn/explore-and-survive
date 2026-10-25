@@ -6,7 +6,8 @@
  *
  * There are ~10⁵ of them, so colliders are streamed: ObstacleField indexes
  * every instance on a coarse grid, and ObstacleStreamer keeps Rapier
- * colliders only for those near a focus point (the player).
+ * colliders only for those near a focus point (the player). A tree can be
+ * felled, which takes it out of both for good.
  *
  * Instance layout (matches Scatter / VegInstance):
  *   A = (x, y, z, scale)   B = (yaw, leanX, leanZ, idF)   idF = cls·8 + variant
@@ -58,6 +59,17 @@ interface Entry {
   template: ObstacleTemplate;
 }
 
+/** a tree trunk in the world: its base, size, and its slot in the trees
+ *  scatter layer (which the renderer hides it by) */
+export interface Trunk {
+  slot: number;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  height: number;
+}
+
 export interface ObstacleHit {
   distance: number;
   normal: { x: number; y: number; z: number };
@@ -83,6 +95,7 @@ export class ObstacleField {
   private readonly entries: Entry[] = [];
   private readonly cells = new Map<number, number[]>();
   private readonly reaches = new Map<ObstacleTemplate, number>();
+  private readonly removed = new Set<number>();
 
   constructor(
     sources: InstanceArrays[],
@@ -121,6 +134,7 @@ export class ObstacleField {
         const list = this.cells.get(this.cellKey(cx, cz));
         if (!list) continue;
         for (const id of list) {
+          if (this.removed.has(id)) continue;
           const { src, i } = this.entries[id] as Entry;
           const dx = (src.A[i * 4] as number) - x;
           const dz = (src.A[i * 4 + 2] as number) - z;
@@ -134,6 +148,26 @@ export class ObstacleField {
   /** how many tree trunks stand within `r` of (x, z) */
   trunksNear(x: number, z: number, r: number): number {
     return this.near(x, z, r).filter((id) => (this.entries[id] as Entry).template.kind === 'trunk').length;
+  }
+
+  /** obstacle `id` as a tree trunk, or null if it isn't one */
+  trunk(id: number): Trunk | null {
+    const { src, i, template } = this.entries[id] as Entry;
+    if (template.kind !== 'trunk') return null;
+    const s = src.A[i * 4 + 3] as number;
+    return {
+      slot: i,
+      x: src.A[i * 4] as number,
+      y: src.A[i * 4 + 1] as number,
+      z: src.A[i * 4 + 2] as number,
+      radius: template.radius * s,
+      height: template.height * s,
+    };
+  }
+
+  /** take obstacle `id` out of the field for good */
+  remove(id: number): void {
+    this.removed.add(id);
   }
 
   /** squared horizontal distance from (x, z) to obstacle `id`'s base */
@@ -177,6 +211,7 @@ export class ObstacleField {
     let limit = maxDistance;
     for (const key of cellsSeen) {
       for (const id of this.cells.get(key) ?? []) {
+        if (this.removed.has(id)) continue;
         const { src, i, template } = this.entries[id] as Entry;
         const bx = (src.A[i * 4] as number) - origin.x;
         const bz = (src.A[i * 4 + 2] as number) - origin.z;
@@ -240,6 +275,8 @@ function segmentDistanceSq(px: number, pz: number, ex: number, ez: number): numb
 /** keeps colliders alive for obstacles within `radius` of the focus point */
 export class ObstacleStreamer {
   private readonly live = new Map<number, RAPIER.Collider>();
+  /** collider handle → obstacle id */
+  private readonly ids = new Map<number, number>();
   private lastX = Infinity;
   private lastZ = Infinity;
 
@@ -255,6 +292,18 @@ export class ObstacleStreamer {
     return this.live.size;
   }
 
+  /** which obstacle a live collider belongs to, if any */
+  idOf(collider: RAPIER.Collider): number | null {
+    return this.ids.get(collider.handle) ?? null;
+  }
+
+  /** take obstacle `id` out of the field and the physics world for good */
+  remove(id: number): void {
+    this.field.remove(id);
+    const collider = this.live.get(id);
+    if (collider) this.drop(id, collider);
+  }
+
   update(x: number, z: number): void {
     if (Math.hypot(x - this.lastX, z - this.lastZ) < this.hysteresis) return;
     this.lastX = x;
@@ -262,16 +311,22 @@ export class ObstacleStreamer {
     // keep a margin beyond the add radius so small moves don't churn
     const keep = new Set(this.field.near(x, z, this.radius + this.hysteresis));
     for (const [id, collider] of this.live) {
-      if (!keep.has(id)) {
-        this.physics.removeCollider(collider);
-        this.live.delete(id);
-      }
+      if (!keep.has(id)) this.drop(id, collider);
     }
     const r2 = this.radius * this.radius;
     for (const id of keep) {
       if (this.live.has(id) || this.field.distanceSq(id, x, z) > r2) continue;
       const desc = this.field.colliderDesc(this.physics.rapier, id);
-      if (desc) this.live.set(id, this.physics.addCollider(desc, this.field.surface(id)));
+      if (!desc) continue;
+      const collider = this.physics.addCollider(desc, this.field.surface(id));
+      this.live.set(id, collider);
+      this.ids.set(collider.handle, id);
     }
+  }
+
+  private drop(id: number, collider: RAPIER.Collider): void {
+    this.ids.delete(collider.handle);
+    this.physics.removeCollider(collider);
+    this.live.delete(id);
   }
 }
