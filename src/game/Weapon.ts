@@ -1,6 +1,5 @@
 /**
- * Weapon — magazine, spare rounds, rate of fire and reload as a small state
- * machine. Reloading draws on the spares, which only pickups replenish. It
+ * Weapon — magazine, rate of fire and reload as a small state machine. It
  * decides *when* a shot happens; where it goes (the ray from the aim) and how
  * it looks (viewmodel, sound, impacts) belong to the caller, so the same
  * weapon works under any camera rig.
@@ -10,10 +9,6 @@ export interface WeaponSpec {
   /** shortest gap between shots (s) */
   fireInterval: number;
   magazine: number;
-  /** spare rounds to start with */
-  spare: number;
-  /** most spare rounds that can be carried */
-  carry: number;
   reloadTime: number;
   /** m */
   range: number;
@@ -28,8 +23,6 @@ export interface WeaponSpec {
 export const PISTOL: WeaponSpec = {
   fireInterval: 0.14,
   magazine: 12,
-  spare: 24,
-  carry: 60,
   reloadTime: 1.3,
   range: 200,
   damage: 25,
@@ -41,36 +34,25 @@ export const PISTOL: WeaponSpec = {
 const TRIGGER_BUFFER = 0.15;
 
 /** fire: a round left the barrel; dry: trigger on an empty magazine (a
- *  reload starts with it, if there are spares); reload / reloaded: start
- *  and end of a reload */
+ *  reload starts with it); reload / reloaded: start and end of a reload */
 export type WeaponEvent = 'fire' | 'dry' | 'reload' | 'reloaded';
 
 export class Weapon {
   ammo: number;
-  spare: number;
   private cooldown = 0;
   private reloadLeft = 0;
   private pending = 0;
 
   constructor(readonly spec: WeaponSpec) {
     this.ammo = spec.magazine;
-    this.spare = spec.spare;
   }
 
-  /** take up to `n` spare rounds; how many there was room for */
-  addSpare(n: number): number {
-    const taken = Math.min(n, this.spec.carry - this.spare);
-    this.spare += taken;
-    return taken;
-  }
-
-  /** a full magazine and at least the starting spares, as after respawning */
+  /** a full magazine and no press pending, as after respawning */
   restock(): void {
     this.reloadLeft = 0;
     this.pending = 0;
     this.cooldown = 0;
     this.ammo = this.spec.magazine;
-    this.spare = Math.max(this.spare, this.spec.spare);
   }
 
   get reloading(): boolean {
@@ -91,22 +73,20 @@ export class Weapon {
       this.reloadLeft -= dt;
       if (this.reloadLeft > 0) return null;
       this.reloadLeft = 0;
-      const n = Math.min(this.spec.magazine - this.ammo, this.spare);
-      this.ammo += n;
-      this.spare -= n;
+      this.ammo = this.spec.magazine;
       return 'reloaded';
     }
     if (this.pending > 0 && this.cooldown === 0) {
       this.pending = 0;
       if (this.ammo === 0) {
-        if (this.spare > 0) this.reloadLeft = this.spec.reloadTime;
+        this.reloadLeft = this.spec.reloadTime;
         return 'dry';
       }
       this.ammo--;
       this.cooldown = this.spec.fireInterval;
       return 'fire';
     }
-    if (reload && this.ammo < this.spec.magazine && this.spare > 0) {
+    if (reload && this.ammo < this.spec.magazine) {
       this.reloadLeft = this.spec.reloadTime;
       return 'reload';
     }

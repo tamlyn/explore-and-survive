@@ -1,10 +1,11 @@
 /**
- * GameHud — crosshair (which flashes on a hit), ammo (the rounds in the
- * magazine, and the spares as magazines beside them), health bar, a
+ * GameHud — crosshair (which flashes on a hit), the rounds in the
+ * magazine, health bar, wood and metal carried, a
  * red flash and an arc pointing at the attacker when hurt and the death
  * notice, shown while playing; and brief toasts, shown whenever.
  */
 
+import type { Material } from './Loot';
 import type { Weapon } from './Weapon';
 
 /** how long the hit marker, hurt flash and toasts last (s) */
@@ -14,7 +15,7 @@ const TOAST_TIME = 1.5;
 const POINTER_TIME = 1.2;
 const BRASS = 'rgba(232,196,110,0.95)';
 const SPENT = 'rgba(255,255,255,0.3)';
-const EMPTY = 'rgba(220,60,40,0.9)';
+const MATERIAL_COLOR: Record<Material, string> = { wood: 'rgb(176,124,74)', metal: 'rgb(170,180,190)' };
 
 function div(css: string[], parent?: HTMLElement): HTMLDivElement {
   const d = document.createElement('div');
@@ -51,13 +52,28 @@ export class GameHud {
     ['position:absolute', 'right:28px', 'bottom:24px', 'display:flex', 'align-items:flex-end', 'gap:14px', 'filter:drop-shadow(0 1px 2px rgba(0,0,0,0.7))'],
     this.root,
   );
-  private readonly mags = div(['display:flex', 'align-items:flex-end', 'gap:4px'], this.ammo);
   private readonly rounds = div(['display:flex', 'align-items:flex-end', 'gap:3px'], this.ammo);
   private readonly bar = div(
     ['position:absolute', 'left:28px', 'bottom:28px', 'width:200px', 'height:8px', 'background:rgba(0,0,0,0.4)', 'box-shadow:0 1px 3px rgba(0,0,0,0.5)'],
     this.root,
   );
   private readonly fill = div(['height:100%', 'background:rgba(235,235,225,0.85)'], this.bar);
+  private readonly stores = div(
+    [
+      'position:absolute', 'left:28px', 'bottom:46px', 'display:flex', 'gap:16px', 'color:rgba(255,255,255,0.85)',
+      'font-size:15px', 'text-shadow:0 1px 3px rgba(0,0,0,0.7)',
+    ],
+    this.root,
+  );
+  private readonly counts = Object.fromEntries(
+    (Object.keys(MATERIAL_COLOR) as Material[]).map((m) => {
+      const item = div(['display:flex', 'align-items:center', 'gap:6px'], this.stores);
+      div(['width:10px', 'height:10px', 'border-radius:2px', `background:${MATERIAL_COLOR[m]}`, 'box-shadow:0 0 0 1px rgba(0,0,0,0.5)'], item);
+      const n = div([], item);
+      n.textContent = `0 ${m}`;
+      return [m, n];
+    }),
+  ) as Record<Material, HTMLDivElement>;
   private readonly notice = div(
     [
       'position:absolute', 'left:0', 'right:0', 'top:38%', 'text-align:center', 'display:none',
@@ -72,7 +88,6 @@ export class GameHud {
   ]);
   private shown = '';
   private roundPips: HTMLDivElement[] = [];
-  private magPips: { box: HTMLDivElement; fill: HTMLDivElement }[] = [];
   private toastLeft = 0;
   private shownHp = -1;
   private hitLeft = 0;
@@ -102,39 +117,26 @@ export class GameHud {
   }
 
   update(weapon: Weapon): void {
-    const { ammo, spare, spec } = weapon;
+    const { ammo, spec } = weapon;
     // a reload fills the magazine round by round as it goes
-    const shown = weapon.reloading ? ammo + Math.floor((Math.min(spec.magazine, ammo + spare) - ammo) * weapon.reloadProgress) : ammo;
-    const key = `${shown},${spare}`;
+    const shown = weapon.reloading ? ammo + Math.floor((spec.magazine - ammo) * weapon.reloadProgress) : ammo;
+    const key = String(shown);
     if (key === this.shown) return;
     this.shown = key;
-    if (this.roundPips.length !== spec.magazine) this.build(spec.magazine, Math.ceil(spec.carry / spec.magazine));
-    const out = shown === 0 && spare === 0;
+    if (this.roundPips.length !== spec.magazine) {
+      this.roundPips = Array.from({ length: spec.magazine }, () =>
+        div(['width:6px', 'height:20px', 'box-sizing:border-box', 'border:1px solid', 'border-radius:3px 3px 1px 1px'], this.rounds),
+      );
+    }
     this.roundPips.forEach((pip, i) => {
       pip.style.background = i < shown ? BRASS : 'transparent';
-      pip.style.borderColor = out ? EMPTY : i < shown ? BRASS : SPENT;
-    });
-    this.magPips.forEach(({ box, fill }, i) => {
-      const full = Math.min(1, Math.max(0, spare / spec.magazine - i));
-      box.style.display = full > 0 ? 'block' : 'none';
-      fill.style.height = `${full * 100}%`;
+      pip.style.borderColor = i < shown ? BRASS : SPENT;
     });
   }
 
-  private build(magazine: number, mags: number): void {
-    this.rounds.replaceChildren();
-    this.mags.replaceChildren();
-    this.roundPips = Array.from({ length: magazine }, () =>
-      div(['width:6px', 'height:20px', 'box-sizing:border-box', 'border:1px solid', 'border-radius:3px 3px 1px 1px'], this.rounds),
-    );
-    this.magPips = Array.from({ length: mags }, () => {
-      const box = div(
-        ['width:11px', 'height:27px', 'box-sizing:border-box', 'border:1px solid rgba(255,255,255,0.6)', 'border-radius:1px', 'position:relative'],
-        this.mags,
-      );
-      const fill = div(['position:absolute', 'left:1px', 'right:1px', 'bottom:1px', 'max-height:calc(100% - 2px)', 'background:rgba(255,255,255,0.75)'], box);
-      return { box, fill };
-    });
+  /** the wood and metal carried */
+  carry(carried: Readonly<Record<Material, number>>): void {
+    for (const m of Object.keys(carried) as Material[]) this.counts[m].textContent = `${carried[m]} ${m}`;
   }
 
   /** a round struck something that can be hurt */

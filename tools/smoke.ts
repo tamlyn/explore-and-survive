@@ -2,7 +2,7 @@
  * Smoke test — boots the default game spawn and checks the player actually
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
- * reloads, beacons can be claimed, crates refill the ammo, and nothing
+ * reloads, beacons can be claimed, scrap can be picked up, and nothing
  * throws.
  * Needs the dev server (LAAS_URL, default :5173).
  *
@@ -70,19 +70,19 @@ await page.evaluate(`(() => {
   Object.defineProperty(document, 'pointerLockElement', { get: () => canvas, configurable: true });
   document.dispatchEvent(new Event('pointerlockchange'));
 })()`);
-const AMMO = `(() => { const w = window.__laasDbg.game.weapon; return w.reloading ? 'reloading' : w.ammo + ' + ' + w.spare; })()`;
+const AMMO = `(() => { const w = window.__laasDbg.game.weapon; return w.reloading ? 'reloading' : String(w.ammo); })()`;
 const ammo = (): Promise<string> => page.evaluate(AMMO) as Promise<string>;
 const before = await ammo();
 await page.mouse.click(640, 400);
 await page.waitForTimeout(300);
 const after = await ammo();
-check(before === '12 + 24' && after === '11 + 24', `firing spends a round (${before} → ${after})`);
+check(before === '12' && after === '11', `firing spends a round (${before} → ${after})`);
 await page.keyboard.press('KeyR');
 await page.waitForTimeout(300);
 const reloading = await ammo();
 await page.waitForTimeout(1500);
 const reloaded = await ammo();
-check(reloading === 'reloading' && reloaded === '12 + 23', `R reloads (${reloading} → ${reloaded})`);
+check(reloading === 'reloading' && reloaded === '12', `R reloads (${reloading} → ${reloaded})`);
 
 // mouse down looks down, or up once Y inverts it
 const pitchAfterDrag = async (): Promise<number> => {
@@ -116,18 +116,11 @@ if (beacon) {
   check(false, 'every world has a checkpoint');
 }
 
-// beside an ammo crate with no spares left: it refills them and goes
-const crate = (await page.evaluate("window.__laasDbg.props.find((p) => p.kind === 'ammoCrates')")) as { x: number; y: number; z: number } | undefined;
-if (crate) {
-  await page.evaluate(`window.__laas.setPose({ p: [${crate.x + 1.6}, ${crate.y + 1.7}, ${crate.z}], yaw: 0, pitch: 0 })`);
-  await page.evaluate('window.__laasDbg.game.weapon.spare = 0');
-  await page.evaluate('window.__laasDbg.game.play()');
-  await page.waitForTimeout(500);
-  const spare = (await page.evaluate('window.__laasDbg.game.weapon.spare')) as number;
-  check(spare === 24, `walking up to an ammo crate refills the spares (${spare} rounds)`);
-} else {
-  check(false, 'the settlements have ammo crates');
-}
+// a wreck's scrap at the player's feet is picked up
+await page.evaluate(`(() => { const a = window.__laasDbg.game.attached; const f = a.motor.feet; a.loot.wreck(f.x, f.y, f.z); })()`);
+await page.waitForTimeout(500);
+const metal = ((await page.evaluate('window.__laasDbg.game.carried')) as { metal: number }).metal;
+check(metal >= 2, `walking over a wreck's scrap picks it up (${metal} metal)`);
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 

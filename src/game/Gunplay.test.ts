@@ -16,7 +16,7 @@ afterEach(() => {
   physics = null;
 });
 
-const SPEC: WeaponSpec = { fireInterval: 0.1, magazine: 2, spare: 2, carry: 4, reloadTime: 1, range: 50, damage: 10, spread: 0, recoil: 0.02 };
+const SPEC: WeaponSpec = { fireInterval: 0.1, magazine: 2, reloadTime: 1, range: 50, damage: 10, spread: 0, recoil: 0.02 };
 
 class Clicks implements PlayerInput {
   presses = new Set<string>();

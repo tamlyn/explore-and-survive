@@ -1,8 +1,9 @@
 /**
- * Loot — what the player can pick up: ammo and medkits, either packed in
- * the settlements' crates (which go once taken) or dropped by destroyed
- * robots. Walking up to it takes it, but only when the player can use it,
- * so a crate waits until it's needed. The views draw it; this decides.
+ * Loot — what the player can pick up: medkits packed in the settlements'
+ * crates (which go once taken), and the metal, wood and medkits left on the
+ * ground by destroyed robots and felled trees. Walking up to it takes it,
+ * but only when the player can use it, so a crate waits until it's needed.
+ * The views draw it; this decides.
  */
 
 import type { Box } from '../world/Box';
@@ -10,25 +11,26 @@ import type { PropKind } from '../world/PropPlan';
 import type { Surface } from './Physics';
 import type { Vec3 } from './PlayerMotor';
 
-export type LootKind = 'ammo' | 'medkit';
+/** what's gathered to build and buy with */
+export type Material = 'wood' | 'metal';
+export type LootKind = 'medkit' | Material;
 
 export interface Haul {
   kind: LootKind;
-  /** rounds, or hit points */
+  /** hit points, or units of material */
   amount: number;
 }
 
 /** what each kind of prop holds */
 export const CACHE_LOOT: Partial<Record<PropKind, Haul>> = {
-  ammoCrates: { kind: 'ammo', amount: 24 },
   woodCrate: { kind: 'medkit', amount: 40 },
 };
 
-/** a robot always leaves rounds, and sometimes a medkit */
-const DROP_AMMO = { min: 6, max: 12 };
-const DROP_MEDKIT = { chance: 0.3, amount: 25 };
-/** the two lie this far apart (m) */
-const DROP_SPREAD = 0.5;
+/** a robot always leaves scrap metal, and sometimes a medkit */
+const WRECK_METAL = { min: 2, max: 5 };
+const WRECK_MEDKIT = { chance: 0.3, amount: 25 };
+/** what's left together lies within this radius (m) */
+const DROP_SPREAD = 0.4;
 /** of each kind on the ground at once; the oldest goes to make room */
 export const MAX_DROPS = 48;
 
@@ -73,15 +75,21 @@ export class Loot {
   }
 
   /** what a robot destroyed at (x, z) leaves on the ground at `y` */
-  drop(x: number, y: number, z: number): void {
+  wreck(x: number, y: number, z: number): void {
     const r = this.random;
-    const ammo = Math.round(DROP_AMMO.min + r() * (DROP_AMMO.max - DROP_AMMO.min));
-    const medkit = r() < DROP_MEDKIT.chance;
-    const a = r() * Math.PI * 2;
-    const dx = medkit ? Math.cos(a) * DROP_SPREAD * 0.5 : 0;
-    const dz = medkit ? Math.sin(a) * DROP_SPREAD * 0.5 : 0;
-    this.add({ kind: 'ammo', amount: ammo }, x + dx, y, z + dz);
-    if (medkit) this.add({ kind: 'medkit', amount: DROP_MEDKIT.amount }, x - dx, y, z - dz);
+    const hauls: Haul[] = [{ kind: 'metal', amount: Math.round(WRECK_METAL.min + r() * (WRECK_METAL.max - WRECK_METAL.min)) }];
+    if (r() < WRECK_MEDKIT.chance) hauls.push({ kind: 'medkit', amount: WRECK_MEDKIT.amount });
+    this.scatter(hauls, x, y, z);
+  }
+
+  /** lay `hauls` on the ground round (x, y, z), evenly about a random turn */
+  scatter(hauls: readonly Haul[], x: number, y: number, z: number): void {
+    const turn = this.random() * Math.PI * 2;
+    const r = hauls.length > 1 ? DROP_SPREAD : 0;
+    hauls.forEach((h, i) => {
+      const a = turn + (i / hauls.length) * Math.PI * 2;
+      this.add(h, x + Math.cos(a) * r, y, z + Math.sin(a) * r);
+    });
   }
 
   /** offer everything within reach of the feet at `at` to `use`, which

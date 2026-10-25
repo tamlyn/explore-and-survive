@@ -9,9 +9,9 @@
  * The player's fixed physics tick advances the whole world, robots
  * included, so in fly mode the robots hold still. The player has health;
  * dying costs a few seconds and puts them back at the last checkpoint they
- * stood by (see Checkpoints), or at the spawn, with at least the ammo they
- * started with. Ammo and medkits come from crates and wrecked robots (see
- * Loot), and health only regenerates part of the way.
+ * stood by (see Checkpoints), or at the spawn. Medkits come from crates and
+ * wrecked robots, which also leave metal (see Loot), and health only
+ * regenerates part of the way.
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -36,7 +36,7 @@ import { GameHud } from './GameHud';
 import { Gunplay } from './Gunplay';
 import { Health } from './Health';
 import { Impacts } from './Impacts';
-import { type Cache, type CacheView, type DropView, Loot } from './Loot';
+import { type Cache, type CacheView, type DropView, Loot, type Material } from './Loot';
 import { ObstacleStreamer, type ObstacleField } from './Obstacles';
 import type { Box } from '../world/Box';
 import { boxColliderDesc, loadRapier, Physics, type Surface, type TerrainGrid } from './Physics';
@@ -125,6 +125,8 @@ interface Attached {
   enemies: Enemies | null;
   checkpoints: Checkpoints | null;
   loot: Loot | null;
+  /** wood and metal gathered, for building and buying with later */
+  carried: Record<Material, number>;
   radar: Radar;
   /** seconds since dying, while dead */
   deadFor: number;
@@ -214,7 +216,7 @@ export class Game {
               sfx.powerDown(at);
               // on whatever the wreck came down on, or afloat
               const below = physics.castRay({ x: at.x, y: at.y + 0.5, z: at.z }, DOWN, 50);
-              loot?.drop(at.x, Math.max(below?.y ?? groundAt(at.x, at.z), world.waterAt(at.x, at.z)), at.z);
+              loot?.wreck(at.x, Math.max(below?.y ?? groundAt(at.x, at.z), world.waterAt(at.x, at.z)), at.z);
             },
           },
         )
@@ -263,6 +265,7 @@ export class Game {
       enemies,
       checkpoints,
       loot,
+      carried: { wood: 0, metal: 0 },
       radar,
       deadFor: 0,
     };
@@ -285,6 +288,10 @@ export class Game {
 
   get enemies(): Enemies | null {
     return this.attached?.enemies ?? null;
+  }
+
+  get carried(): Readonly<Record<Material, number>> | null {
+    return this.attached?.carried ?? null;
   }
 
   get weapon(): Weapon | null {
@@ -373,17 +380,18 @@ export class Game {
   private collect(a: Attached): void {
     const got: string[] = [];
     a.loot?.reach(a.motor.feet, (haul) => {
-      if (haul.kind === 'ammo') {
-        const n = a.weapon.addSpare(haul.amount);
-        if (n > 0) got.push(`+${n} rounds`);
+      if (haul.kind === 'medkit') {
+        const n = Math.round(a.health.heal(haul.amount));
+        if (n > 0) got.push(`+${n} health`);
         return n > 0;
       }
-      const n = Math.round(a.health.heal(haul.amount));
-      if (n > 0) got.push(`+${n} health`);
-      return n > 0;
+      a.carried[haul.kind] += haul.amount;
+      got.push(`+${haul.amount} ${haul.kind}`);
+      return true;
     });
     if (!got.length) return;
     a.hud.toast(got.join(' · '));
+    a.hud.carry(a.carried);
     a.sfx.pickup();
   }
 

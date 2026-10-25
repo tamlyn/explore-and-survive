@@ -1,12 +1,13 @@
 /**
  * Pickups rendering — loot dropped on the ground, turning slowly and
- * bobbing just above it: an olive ammo tin with a glowing band and a white
- * medkit with a glowing red cross, so they're found in the undergrowth and
- * at dusk. One instanced mesh per kind, with a slot per drop Loot allows.
+ * bobbing just above it: a white medkit with a glowing red cross, a plate
+ * of rusty scrap metal and a log. One instanced mesh per kind, with a slot
+ * per drop Loot allows.
  */
 
-import { BoxGeometry, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
-import { float, max, positionGeometry, sin, smoothstep, time, vec3 } from 'three/tsl';
+import { BoxGeometry, type BufferGeometry, CylinderGeometry, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { float, max, mix, positionGeometry, sin, smoothstep, time, vec3 } from 'three/tsl';
+import { fbm3 } from '../gpu/noise/NoiseTSL';
 import { MeshStandardNodeMaterial, type StorageTexture } from 'three/webgpu';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import type { NF, NV3 } from '../gpu/TSLTypes';
@@ -21,19 +22,9 @@ const SPIN = 1.2;
 
 type Look = (p: NV3, pulse: NF, mat: MeshStandardNodeMaterial) => void;
 
-const LOOKS: Record<LootKind, { size: [number, number, number]; look: Look }> = {
-  ammo: {
-    size: [0.3, 0.16, 0.18],
-    look: (p, pulse, mat) => {
-      const band = smoothstep(0.02, 0.012, p.y.abs());
-      mat.colorNode = vec3(0.22, 0.24, 0.13).add(vec3(0.5, 0.36, 0.1).mul(band));
-      mat.emissiveNode = vec3(1, 0.6, 0.15).mul(band.mul(pulse).mul(GLOW));
-      mat.roughnessNode = float(0.6);
-      mat.metalnessNode = float(0.5);
-    },
-  },
+const LOOKS: Record<LootKind, { geometry: () => BufferGeometry; look: Look }> = {
   medkit: {
-    size: [0.28, 0.2, 0.1],
+    geometry: () => new BoxGeometry(0.28, 0.2, 0.1),
     look: (p, pulse, mat) => {
       // a cross on the broad faces
       const ax = p.x.abs();
@@ -46,9 +37,29 @@ const LOOKS: Record<LootKind, { size: [number, number, number]; look: Look }> = 
       mat.metalnessNode = float(0);
     },
   },
+  metal: {
+    geometry: () => new BoxGeometry(0.3, 0.05, 0.22),
+    look: (p, _pulse, mat) => {
+      const rust = smoothstep(0.45, 0.65, fbm3(p.mul(18), 3) as NF);
+      mat.colorNode = mix(vec3(0.55, 0.57, 0.6), vec3(0.32, 0.14, 0.06), rust);
+      mat.roughnessNode = mix(float(0.35), float(0.9), rust);
+      mat.metalnessNode = mix(float(0.9), float(0.2), rust);
+    },
+  },
+  wood: {
+    geometry: () => new CylinderGeometry(0.09, 0.1, 0.5, 10).rotateZ(Math.PI / 2),
+    look: (p, _pulse, mat) => {
+      // bark along the log, pale end grain at the cut ends
+      const ends = smoothstep(0.23, 0.245, p.x.abs());
+      const bark = vec3(0.24, 0.16, 0.1).mul((fbm3(p.mul(vec3(4, 30, 30)), 3) as NF).mul(0.6).add(0.6));
+      mat.colorNode = mix(bark, vec3(0.62, 0.48, 0.3), ends);
+      mat.roughnessNode = float(0.9);
+      mat.metalnessNode = float(0);
+    },
+  },
 };
 
-const KINDS: LootKind[] = ['ammo', 'medkit'];
+const KINDS: LootKind[] = ['medkit', 'metal', 'wood'];
 const HIDDEN = new Matrix4().makeScale(0, 0, 0);
 const M = new Matrix4();
 const P = new Vector3();
@@ -70,11 +81,11 @@ export class Pickups implements DropView {
   constructor(gi: ProbeGI | null, canopyTex: StorageTexture | null) {
     const pulse = sin(time.mul(3)).mul(0.35).add(0.65) as unknown as NF;
     const pool = (kind: LootKind): KindPool => {
-      const { size, look } = LOOKS[kind];
+      const { geometry, look } = LOOKS[kind];
       const mat = new MeshStandardNodeMaterial();
       look(positionGeometry as unknown as NV3, pulse, mat);
       if (gi) lightWithProbes(mat, gi, canopyTex);
-      const mesh = new InstancedMesh(new BoxGeometry(...size), mat, MAX_DROPS);
+      const mesh = new InstancedMesh(geometry(), mat, MAX_DROPS);
       mesh.name = `pickups:${kind}`;
       mesh.castShadow = true;
       mesh.frustumCulled = false;
@@ -82,7 +93,7 @@ export class Pickups implements DropView {
       mesh.count = 0;
       return { mesh, slots: new Array<Vector3 | null>(MAX_DROPS).fill(null) };
     };
-    this.pools = { ammo: pool('ammo'), medkit: pool('medkit') };
+    this.pools = { medkit: pool('medkit'), metal: pool('metal'), wood: pool('wood') };
     this.meshes = KINDS.map((k) => this.pools[k].mesh);
   }
 
