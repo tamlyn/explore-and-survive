@@ -6,12 +6,12 @@
  */
 
 import { BoxGeometry, type BufferGeometry, CylinderGeometry, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
-import { float, max, mix, normalGeometry, positionGeometry, sin, smoothstep, time, vec3 } from 'three/tsl';
+import { float, max, mix, normalGeometry, positionGeometry, smoothstep, vec3 } from 'three/tsl';
 import { fbm3 } from '../gpu/noise/NoiseTSL';
 import { MeshStandardNodeMaterial, type StorageTexture } from 'three/webgpu';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import type { NF, NV3 } from '../gpu/TSLTypes';
-import { highlight } from '../render/Highlight';
+import { highlight, pickupPulse } from '../render/Highlight';
 import { lightWithProbes } from '../render/ProbeLighting';
 import { type DropView, type LootKind, MAX_DROPS } from './Loot';
 
@@ -80,7 +80,7 @@ export class Pickups implements DropView {
   private t = 0;
 
   constructor(gi: ProbeGI | null, canopyTex: StorageTexture | null) {
-    const pulse = sin(time.mul(3)).mul(0.35).add(0.65) as unknown as NF;
+    const pulse = pickupPulse();
     const pool = (kind: LootKind): KindPool => {
       const { geometry, look } = LOOKS[kind];
       const mat = new MeshStandardNodeMaterial();

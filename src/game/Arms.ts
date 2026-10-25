@@ -30,6 +30,9 @@ export class Arms {
   set active(on: boolean) {
     this.parts.viewmodel.scene.visible = on;
     this.parts.hud.visible = on;
+    // a swing cut short by death or flying mustn't land when play resumes
+    this.parts.swing.reset();
+    this.arsenal.settle();
   }
 
   /** before the camera rig, so recoil shows in this frame's view; true

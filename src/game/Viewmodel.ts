@@ -39,6 +39,7 @@ import { type Spring, stepSpring } from '../core/Spring';
 import { runiform } from '../gpu/RenderUniform';
 import type { NF } from '../gpu/TSLTypes';
 import type { Tool } from './Arsenal';
+import { AXE } from './Melee';
 import { WALK_SPEED } from './Player';
 
 const GUN_LENGTH = 0.2; // m, muzzle to hammer
@@ -54,10 +55,10 @@ const TONGUE_LENGTH = 0.14;
 /** the axe's grip, and its lean: head a little forward and inward */
 const AXE_REST = new Vector3(0.2, -0.3, -0.42);
 const AXE_TILT = { x: -0.55, z: 0.3 };
-/** where in a swing (0 → 1) the wind-up ends and the blow lands; matches
- *  AXE's strikeAt / swingTime */
-const AXE_WOUND = 0.28;
-const AXE_LANDED = 0.42;
+/** where in a swing (0 → 1) the blow lands, as the hit does, and the
+ *  wind-up before it ends */
+const AXE_LANDED = AXE.strikeAt / AXE.swingTime;
+const AXE_WOUND = AXE_LANDED - 0.12;
 const KICK_K = 260; // recoil spring stiffness
 const KICK_C = 26; // recoil spring damping
 /** how much of the sun and the sky light deep canopy takes away */
@@ -188,7 +189,8 @@ export class Viewmodel {
 
     stepSpring(this.kick, KICK_K, KICK_C, dt);
 
-    for (const [tool, model] of Object.entries(this.tools)) model.visible = tool === pose.tool;
+    this.tools.pistol.visible = pose.tool === 'pistol';
+    this.tools.axe.visible = pose.tool === 'axe';
     const h = this.holder;
     // what every tool shares: bob, sway, the sprint carry and the change dip
     h.position.set(
@@ -247,21 +249,24 @@ function smooth(a: number, b: number, t: number): number {
 
 /** the axe through a swing (0 → 1): raised and cocked back, brought down
  *  hard across to the left, then back to rest */
-const SWING_AT = new Vector3();
+const SWING = { at: new Vector3(), rx: 0, rz: 0 };
 
-function axeSwing(s: number): { at: Vector3; rx: number; rz: number } {
-  if (s <= 0) return { at: SWING_AT.set(0, 0, 0), rx: 0, rz: 0 };
+function axeSwing(s: number): typeof SWING {
+  if (s <= 0) {
+    SWING.at.set(0, 0, 0);
+    SWING.rx = SWING.rz = 0;
+    return SWING;
+  }
   const wind = smooth(0, AXE_WOUND, s);
   const blow = smooth(AXE_WOUND, AXE_LANDED, s);
   const back = smooth(AXE_LANDED + 0.1, 1, s);
   // wound up → struck, then fading back to rest
   const up = wind * (1 - blow);
   const down = blow * (1 - back);
-  return {
-    at: SWING_AT.set(-0.09 * down, 0.07 * up - 0.1 * down, 0.04 * up - 0.06 * down),
-    rx: 1.0 * up - 1.3 * down,
-    rz: 0.25 * up + 0.35 * down,
-  };
+  SWING.at.set(-0.09 * down, 0.07 * up - 0.1 * down, 0.04 * up - 0.06 * down);
+  SWING.rx = 1.0 * up - 1.3 * down;
+  SWING.rz = 0.25 * up + 0.35 * down;
+  return SWING;
 }
 
 /** a hatchet with its grip at the origin: the handle up +y, the blade's

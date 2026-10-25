@@ -16,11 +16,17 @@ const FILL = 0.12;
 const NEAR = 25;
 const FAR = 45;
 
+/** 0.3 … 1, three pulses every 2π s; shared by everything that glows to
+ *  be picked up, so they beat together */
+export function pickupPulse(): NF {
+  return sin(time.mul(3)).mul(0.35).add(0.65) as unknown as NF;
+}
+
 export function highlight(): NV3 {
   const toEye = cameraPosition.sub(positionWorld);
   const facing = normalWorld.dot(toEye.normalize()).clamp(0, 1);
   const rim = float(1).sub(facing).pow(3).add(FILL);
-  const pulse = sin(time.mul(3)).mul(0.35).add(0.65);
+  const pulse = pickupPulse();
   const near = smoothstep(FAR, NEAR, toEye.length());
   return vec3(1, 0.78, 0.38).mul(rim.mul(pulse).mul(near).mul(GLOW) as unknown as NF) as unknown as NV3;
 }

@@ -1,7 +1,7 @@
 /**
  * Arsenal — which of the player's tools is in hand, and changing it: the
  * number keys pick one, the wheel steps through them. Changing lowers the
- * old tool and raises the new, and nothing can be used meanwhile.
+ * old tool and raises the new; nothing can be used, or picked, meanwhile.
  */
 
 import type { PlayerInput } from './Player';
@@ -42,21 +42,28 @@ export class Arsenal {
     return t < 0.5 ? t * 2 : (1 - t) * 2;
   }
 
+  /** finish any change at once, as when play stops */
+  settle(): void {
+    this.left = 0;
+    this.leaving = null;
+  }
+
   /** true when a change starts */
   update(dt: number, input: ArsenalInput): boolean {
     this.left = Math.max(0, this.left - dt);
     if (this.left === 0) this.leaving = null;
+    // taken either way, so a trackpad's long scroll can't queue up changes
+    const wheel = input.takeWheel();
     let pick: Tool | null = null;
     TOOLS.forEach((tool, i) => {
       if (input.takePress(`Digit${i + 1}`)) pick = tool;
     });
-    const wheel = input.takeWheel();
     if (wheel !== 0) {
       const at = TOOLS.indexOf(this.current);
       pick = TOOLS[(at + Math.sign(wheel) + TOOLS.length) % TOOLS.length]!;
     }
-    if (!pick || pick === this.current) return false;
-    this.leaving = this.ready ? this.current : this.shown;
+    if (!this.ready || !pick || pick === this.current) return false;
+    this.leaving = this.current;
     this.current = pick;
     this.left = SWITCH_TIME;
     return true;

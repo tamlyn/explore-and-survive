@@ -202,6 +202,11 @@ export class Game {
     const { heights, res, worldSize } = world.terrain;
     const groundAt = (x: number, z: number): number =>
       physics.terrainY(x, z) ?? sampleGrid(heights, res, worldSize, x, z);
+    // on whatever is there (a ruin's floor, a rock), or afloat
+    const restY = (x: number, y: number, z: number): number => {
+      const below = physics.castRay({ x, y: y + 0.5, z }, DOWN, 50);
+      return Math.max(below?.y ?? groundAt(x, z), world.waterAt(x, z));
+    };
     const loot = world.loot ? this.makeLoot(world.loot, physics) : null;
     const enemies = world.enemies
       ? new Enemies(
@@ -223,9 +228,7 @@ export class Game {
             },
             destroyed: (at) => {
               sfx.powerDown(at);
-              // on whatever the wreck came down on, or afloat
-              const below = physics.castRay({ x: at.x, y: at.y + 0.5, z: at.z }, DOWN, 50);
-              loot?.wreck(at.x, Math.max(below?.y ?? groundAt(at.x, at.z), world.waterAt(at.x, at.z)), at.z);
+              loot?.wreck(at.x, restY(at.x, at.y, at.z), at.z);
             },
           },
         )
@@ -276,7 +279,7 @@ export class Game {
               for (let left = woodIn(trunk); left > 0; left -= WOOD_PER_LOG) {
                 logs.push({ kind: 'wood', amount: Math.min(WOOD_PER_LOG, left) });
               }
-              loot?.scatter(logs, x, groundAt(x, z), z);
+              loot?.scatter(logs, x, restY(x, trunk.y + 2, z), z);
             },
           )
         : null;

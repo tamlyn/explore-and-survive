@@ -39,4 +39,11 @@ describe('Arsenal', () => {
     a.update(1, keys([], 1));
     expect(a.current).toBe('pistol');
   });
+
+  it('takes no new pick mid-change, so a long scroll lands on one tool', () => {
+    const a = new Arsenal();
+    a.update(0, keys([], 1));
+    for (let i = 0; i < 10; i++) a.update(0.02, keys(['Digit1'], 1));
+    expect(a.current).toBe('axe');
+  });
 });
