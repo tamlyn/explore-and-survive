@@ -15,6 +15,8 @@ import {
   Box3,
   CustomBlending,
   DirectionalLight,
+  DoubleSide,
+  Float32BufferAttribute,
   Group,
   HemisphereLight as Hemi,
   Mesh,
@@ -26,9 +28,11 @@ import {
   ZeroFactor,
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { atan, cos, float, length, uv, vec3 } from 'three/tsl';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { atan, attribute, cos, float, length, mix, uv, vec3 } from 'three/tsl';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import pistolUrl from '../../assets/models/pistol.glb?url';
+import { type Spring, stepSpring } from '../core/Spring';
 import { runiform } from '../gpu/RenderUniform';
 import type { NF } from '../gpu/TSLTypes';
 import { WALK_SPEED } from './Player';
@@ -41,6 +45,8 @@ const REST_YAW = 0.22;
 const FOV = 50;
 const FLASH_TIME = 0.05;
 const FLASH_HDR = 60;
+/** how far the flash's flame reaches past the muzzle (m) */
+const TONGUE_LENGTH = 0.14;
 const KICK_K = 260; // recoil spring stiffness
 const KICK_C = 26; // recoil spring damping
 /** how much of the sun and the sky light deep canopy takes away */
@@ -77,8 +83,7 @@ export class Viewmodel {
   private readonly flash: Mesh;
   private readonly flashIntensity = runiform(0);
   private flashLeft = 0;
-  private kick = 0;
-  private kickV = 0;
+  private readonly kick: Spring = { x: 0, v: 0 };
   private swayX = 0;
   private swayY = 0;
   private bobPhase = 0;
@@ -123,17 +128,17 @@ export class Viewmodel {
   /** settle all motion — on (re-)entering play, when the aim may have jumped */
   reset(): void {
     this.lastYaw = null;
-    this.kick = 0;
-    this.kickV = 0;
+    this.kick.x = 0;
+    this.kick.v = 0;
     this.swayX = 0;
     this.swayY = 0;
     this.flashLeft = 0;
   }
 
   fire(): void {
-    this.kickV += 9;
+    this.kick.v += 9;
     this.flashLeft = FLASH_TIME;
-    this.flash.rotation.z = Math.random() * Math.PI;
+    this.flash.rotation.x = Math.random() * Math.PI;
     this.flash.scale.setScalar(0.8 + Math.random() * 0.4);
   }
 
@@ -161,25 +166,25 @@ export class Viewmodel {
     const sprintT = p.sprinting && p.grounded && p.speed > WALK_SPEED * 1.15 ? 1 : 0;
     this.sprintK += (sprintT - this.sprintK) * (1 - Math.exp(-dt * 7));
 
-    this.kickV += (-KICK_K * this.kick - KICK_C * this.kickV) * dt;
-    this.kick += this.kickV * dt;
+    stepSpring(this.kick, KICK_K, KICK_C, dt);
 
     const dip = Math.sin(Math.PI * reload);
     const h = this.holder;
     h.position.set(
       REST.x + Math.sin(this.bobPhase) * 0.006 * this.bobK + this.swayX * 0.4 - this.sprintK * 0.03,
       REST.y - Math.abs(Math.cos(this.bobPhase)) * 0.006 * this.bobK - this.swayY * 0.4 - this.sprintK * 0.04 - dip * 0.07,
-      REST.z + this.kick * 0.012,
+      REST.z + this.kick.x * 0.012,
     );
     h.rotation.set(
-      this.kick * 0.06 - this.sprintK * 0.5 - dip * 0.6,
+      this.kick.x * 0.06 - this.sprintK * 0.5 - dip * 0.6,
       REST_YAW + this.swayX + this.sprintK * 0.5,
       dip * 0.5,
     );
 
-    this.flashLeft = Math.max(0, this.flashLeft - dt);
+    // aged after drawing, so a frame slower than the flash still shows it
     this.flash.visible = this.flashLeft > 0;
     this.flashIntensity.value = (this.flashLeft / FLASH_TIME) * FLASH_HDR;
+    this.flashLeft = Math.max(0, this.flashLeft - dt);
   }
 
   private syncWorld(): void {
@@ -231,29 +236,40 @@ function muzzlePoint(model: Object3D): Vector3 {
   return new Vector3(box.max.x + 0.005, n ? sum.y / n : 0, n ? sum.z / n : 0);
 }
 
-/** a soft star facing back down the barrel; brightness is HDR so it reads
- *  hot against any exposure */
+/** a soft star facing back down the barrel, and two crossed tongues of
+ *  flame reaching forward from it, so the flash shows round the gun's
+ *  silhouette from behind; brightness is HDR so it reads hot against any
+ *  exposure. In the gun's space: the barrel runs along +x. */
 function muzzleFlash(intensity: NF): Mesh {
+  const star = new PlaneGeometry(0.1, 0.1).rotateY(-Math.PI / 2);
+  const tongue = (): PlaneGeometry => new PlaneGeometry(TONGUE_LENGTH, 0.05).translate(TONGUE_LENGTH / 2, 0, 0);
+  const parts = [star, tongue(), tongue().rotateX(Math.PI / 2)];
+  parts.forEach((g, i) => g.setAttribute('_tongue', new Float32BufferAttribute(new Float32Array(g.getAttribute('position').count).fill(i ? 1 : 0), 1)));
+  const geo = mergeGeometries(parts)!;
+
   const c = uv().sub(0.5);
   const r = length(c).mul(2);
   const spikes = cos(atan(c.y, c.x).mul(5)).mul(0.35).add(0.65);
-  const core = float(1).sub(r.div(spikes)).max(0).pow(2);
-  const glow = float(1).sub(r).max(0).pow(4).mul(0.3);
-  // seen from behind, the gun itself would hide the flash; adds light but
-  // leaves alpha alone, so it stays see-through in the premultiplied overlay
+  const starShape = float(1).sub(r.div(spikes)).max(0).pow(2).add(float(1).sub(r).max(0).pow(4).mul(0.3));
+  // uv.x runs from the muzzle to the tongue's tip
+  const reach = float(1).sub(uv().x);
+  const across = c.y.abs().mul(2).div(reach.pow(0.6).max(1e-3));
+  const tongueShape = float(1).sub(across).max(0).pow(2).mul(reach.pow(1.5));
+  const shape = mix(starShape, tongueShape, attribute('_tongue', 'float'));
+  // adds light but leaves alpha alone, so it stays see-through in the
+  // premultiplied overlay
   const mat = new MeshBasicNodeMaterial({
     transparent: true,
-    depthTest: false,
     depthWrite: false,
+    side: DoubleSide,
     blending: CustomBlending,
     blendSrc: OneFactor,
     blendDst: OneFactor,
     blendSrcAlpha: ZeroFactor,
     blendDstAlpha: OneFactor,
   });
-  mat.colorNode = vec3(1, 0.62, 0.28).mul(core.add(glow)).mul(intensity);
-  const mesh = new Mesh(new PlaneGeometry(0.1, 0.1), mat);
-  mesh.rotation.y = -Math.PI / 2; // face back down the barrel (−x), at the shooter
+  mat.colorNode = vec3(1, 0.62, 0.28).mul(shape).mul(intensity);
+  const mesh = new Mesh(geo, mat);
   mesh.renderOrder = 1;
   return mesh;
 }

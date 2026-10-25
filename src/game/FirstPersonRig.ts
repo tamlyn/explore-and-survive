@@ -8,6 +8,7 @@
 import type { PerspectiveCamera } from 'three';
 import { Vector3 } from 'three';
 import { aimCamera } from '../core/CameraAim';
+import { type Spring, stepSpring } from '../core/Spring';
 import { WALK_SPEED, SPRINT_MULT } from './Player';
 import type { Vec3 } from './PlayerMotor';
 
@@ -39,8 +40,7 @@ export class FirstPersonRig {
 
   private stridePhase = 0;
   private bobK = 0; // smoothed 0..1+ speed factor driving bob amplitude
-  private dipY = 0;
-  private dipV = 0;
+  private readonly dip: Spring = { x: 0, v: 0 };
   private fovKick = 0;
 
   constructor(private readonly camera: PerspectiveCamera) {
@@ -50,8 +50,8 @@ export class FirstPersonRig {
   reset(): void {
     this.stridePhase = 0;
     this.bobK = 0;
-    this.dipY = 0;
-    this.dipV = 0;
+    this.dip.x = 0;
+    this.dip.v = 0;
     this.fovKick = 0;
   }
 
@@ -70,11 +70,9 @@ export class FirstPersonRig {
     const bobX = Math.sin(this.stridePhase) * ampY * BOB_LATERAL;
     const roll = Math.sin(this.stridePhase) * BOB_ROLL * this.bobK;
 
-    // landing dip ∝ impact speed; semi-implicit Euler spring (stable at the
-    // engine dt cap)
-    if (p.landingSpeed > DIP_MIN_SPEED) this.dipV -= Math.min(p.landingSpeed * 0.035, 0.2) * 9;
-    this.dipV += (-DIP_K * this.dipY - DIP_C * this.dipV) * dt;
-    this.dipY += this.dipV * dt;
+    // landing dip ∝ impact speed
+    if (p.landingSpeed > DIP_MIN_SPEED) this.dip.v -= Math.min(p.landingSpeed * 0.035, 0.2) * 9;
+    stepSpring(this.dip, DIP_K, DIP_C, dt);
 
     const fovTarget =
       p.sprinting && p.grounded && p.speed > WALK_SPEED * 1.15 ? SPRINT_FOV_ADD : 0;
@@ -88,7 +86,7 @@ export class FirstPersonRig {
     const cam = this.camera;
     aimCamera(cam, p.yaw, p.pitch, roll);
     RIGHT.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
-    cam.position.set(p.eye.x, p.eye.y + bobY + this.dipY, p.eye.z).addScaledVector(RIGHT, bobX);
+    cam.position.set(p.eye.x, p.eye.y + bobY + this.dip.x, p.eye.z).addScaledVector(RIGHT, bobX);
     // matrices fresh for every subsystem updateFn that runs after this one
     cam.updateMatrixWorld();
   }
