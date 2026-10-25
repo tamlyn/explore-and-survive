@@ -216,6 +216,17 @@ export class Game {
       return Math.max(below?.y ?? groundAt(x, z), world.waterAt(x, z));
     };
     const loot = world.loot ? this.makeLoot(world.loot, physics) : null;
+    const buildingView = world.building ?? UNSEEN;
+    const building = new Building(physics, buildingView, {
+      broke: (at) => {
+        sfx.splinter(at);
+        for (let k = 0; k < 3; k++) {
+          const x = at.x + (Math.random() - 0.5) * 2;
+          const z = at.z + (Math.random() - 0.5) * 2;
+          impacts.spawn({ x, y: at.y + (Math.random() - 0.5), z, normal: { x: 0, y: 1, z: 0 }, surface: 'wood', target: null });
+        }
+      },
+    });
     const enemies = world.enemies
       ? new Enemies(
           world.enemies.spawns,
@@ -225,6 +236,7 @@ export class Game {
             obstacles: world.obstacles,
             waterAt: world.waterAt,
             groundAt,
+            built: (t) => building.owns(t),
           },
           world.enemies.views,
           target,
@@ -291,17 +303,6 @@ export class Game {
             },
           )
         : null;
-    const buildingView = world.building ?? UNSEEN;
-    const building = new Building(physics, buildingView, {
-      broke: (at) => {
-        sfx.splinter(at);
-        for (let k = 0; k < 3; k++) {
-          const x = at.x + (Math.random() - 0.5) * 2;
-          const z = at.z + (Math.random() - 0.5) * 2;
-          impacts.spawn({ x, y: at.y + (Math.random() - 0.5), z, normal: { x: 0, y: 1, z: 0 }, surface: 'wood', target: null });
-        }
-      },
-    });
     const carried = { wood: 0, metal: 0 };
     const builder = new Builder({ building, ghost: buildingView, sfx, hud }, carried, motor, groundAt);
     const swing = new Swing(AXE);

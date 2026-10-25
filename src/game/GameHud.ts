@@ -23,6 +23,10 @@ const LIT = 'rgba(255,255,255,0.95)';
 const UNLIT = 'rgba(255,255,255,0.45)';
 const MATERIAL_COLOR: Record<Material, string> = { wood: 'rgb(176,124,74)', metal: 'rgb(170,180,190)' };
 
+function title(name: string): string {
+  return `${name[0]!.toUpperCase()}${name.slice(1)}`;
+}
+
 function div(css: string[], parent?: HTMLElement): HTMLDivElement {
   const d = document.createElement('div');
   d.style.cssText = css.join(';');
@@ -68,7 +72,7 @@ export class GameHud {
   );
   private readonly slotLabels = TOOLS.map((tool, i) => {
     const d = div([], this.slots);
-    d.textContent = `${i + 1} ${tool[0]!.toUpperCase()}${tool.slice(1)}`;
+    d.textContent = `${i + 1} ${title(tool)}`;
     return d;
   });
   private readonly pieces = div(
@@ -80,7 +84,7 @@ export class GameHud {
   );
   private readonly pieceLabels = PIECES.map((kind) => {
     const d = div([], this.pieces);
-    d.textContent = `${kind[0]!.toUpperCase()}${kind.slice(1)}`;
+    d.textContent = title(kind);
     return d;
   });
   private holding: Tool = TOOLS[0]!;

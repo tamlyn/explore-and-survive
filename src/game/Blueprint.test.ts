@@ -67,6 +67,8 @@ describe('aim', () => {
     const midway = stance({ feet: { x: 1, y: 1.4, z: 2 }, on: ramp });
     expect(aim('ramp', midway, flat(0, [ramp]))).toMatchObject({ i: 0, j: -1, y: STOREY });
     expect(aim('ramp', { ...midway, yaw: Math.PI }, flat(0, [ramp])).y).toBeCloseTo(0);
+    // a wall round it stands on its storey, beside the climb
+    expect(aim('wall', midway, flat(0, [ramp])).y).toBeCloseTo(0);
   });
 });
 

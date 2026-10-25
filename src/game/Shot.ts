@@ -21,8 +21,6 @@ export interface Impact {
   surface: ImpactSurface;
   /** who the shot hurts, if anyone */
   target: Hittable | null;
-  /** what it struck, when that's in the physics world */
-  collider?: RAPIER.Collider | undefined;
 }
 
 export interface ShotWorld {
@@ -31,15 +29,17 @@ export interface ShotWorld {
   waterAt?: ((x: number, z: number) => number) | undefined;
 }
 
-/** `shooter` is the firer's own collider, which the ray starts inside */
+/** `shooter` is the firer's own collider, which the ray starts inside;
+ *  targets that `see` passes are seen through */
 export function traceShot(
   world: ShotWorld,
   origin: Vec3,
   dir: Vec3,
   range: number,
   shooter?: RAPIER.Collider,
+  see?: (target: Hittable) => boolean,
 ): Impact | null {
-  const near = world.physics.castRay(origin, dir, range, shooter);
+  const near = world.physics.castRay(origin, dir, range, shooter, see);
   const far = world.obstacles?.castRay(world.physics.rapier, origin, dir, near?.distance ?? range) ?? null;
   const hit = far ?? near;
   if (!hit) return null;
@@ -59,6 +59,6 @@ export function traceShot(
       target: null,
     };
   }
-  if (hit === near) return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone', target: near.target, collider: near.collider };
-  return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone', target: null };
+  const target = hit === near ? near.target : null;
+  return { x, y, z, normal: hit.normal, surface: hit.surface ?? 'stone', target };
 }

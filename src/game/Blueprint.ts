@@ -46,6 +46,13 @@ const LOOK_DOWN = -0.9;
 /** pieces this far above or below don't set the storeys (m) */
 const LATTICE_REACH = STOREY * 1.5;
 
+/** a ramp's foot, the edge it climbs away from, as fractions of its cell */
+const RAMP_FOOT: Record<Dir, [number, number][]> = {
+  0: [[0, 1], [0.5, 1], [1, 1]],
+  1: [[1, 0], [1, 0.5], [1, 1]],
+  2: [[0, 0], [0.5, 0], [1, 0]],
+  3: [[0, 0], [0, 0.5], [0, 1]],
+};
 const RAMP_LENGTH = Math.hypot(CELL, STOREY);
 const RAMP_PITCH = Math.atan2(STOREY, CELL);
 
@@ -127,7 +134,7 @@ export function aim(kind: PieceKind, s: Stance, plot: Plot): Piece {
     i += di;
     j += dj;
   }
-  const want = standingLevel(s, d) + (s.pitch > LOOK_UP ? STOREY : 0);
+  const want = standingLevel(kind, s, d) + (s.pitch > LOOK_UP ? STOREY : 0);
   const at = footprint({ kind, i, j, dir });
   const against = plot.near(i, j).filter((p) => touching(at, footprint(p), kind === 'wall' && p.kind === 'wall'));
   const y = latticeY(against, want) ?? restingY(kind, i, j, dir, plot);
@@ -149,12 +156,14 @@ function touching(a: number[], b: number[], corners: boolean): boolean {
   return x >= 0 && z >= 0 && (corners || x > 0 || z > 0);
 }
 
-/** the storey line the player stands on: going up a ramp, its top */
-function standingLevel(s: Stance, d: Dir): number {
+/** the storey line the player stands on: on a ramp, its own for a wall
+ *  round it, but its top for what's built ahead going up */
+function standingLevel(kind: PieceKind, s: Stance, d: Dir): number {
   const on = s.on;
   if (!on) return s.feet.y;
   if (on.kind === 'floor') return on.y;
   if (on.kind === 'wall') return on.y + STOREY;
+  if (kind === 'wall') return on.y;
   if (on.dir === d) return on.y + STOREY;
   if (on.dir === (d + 2) % 4) return on.y;
   return s.feet.y - on.y < STOREY / 2 ? on.y : on.y + STOREY;
@@ -181,12 +190,6 @@ function restingY(kind: PieceKind, i: number, j: number, d: Dir, plot: Plot): nu
   if (kind === 'wall') {
     return d === 0 ? Math.min(g(0, 0), g(0.5, 0), g(1, 0)) : Math.min(g(0, 0), g(0, 0.5), g(0, 1));
   }
-  // the foot is the edge the ramp climbs away from
-  const foot: Record<Dir, [number, number][]> = {
-    0: [[0, 1], [0.5, 1], [1, 1]],
-    1: [[1, 0], [1, 0.5], [1, 1]],
-    2: [[0, 0], [0.5, 0], [1, 0]],
-    3: [[0, 0], [0, 0.5], [0, 1]],
-  };
-  return Math.min(...foot[d].map(([fx, fz]) => g(fx, fz)));
+  const [a, b, c] = RAMP_FOOT[d];
+  return Math.min(g(...a), g(...b), g(...c));
 }

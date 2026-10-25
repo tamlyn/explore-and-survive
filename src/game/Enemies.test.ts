@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { EnemySpawn } from '../world/EnemyPlan';
 import { Building, type PieceView } from './Building';
-import { Enemies, type EnemyFx, type EnemyTarget, type RobotView } from './Enemies';
+import { Enemies, type EnemyFx, type EnemyTarget, type EnemyWorld, type RobotView } from './Enemies';
 import { loadRapier, Physics, type Rapier } from './Physics';
 import { PlayerMotor, type Vec3 } from './PlayerMotor';
 import { ROBOTS } from './RobotSpec';
@@ -40,6 +40,7 @@ interface Setup {
   shots: number;
   /** where the last round left from */
   lastFrom: Vec3 | null;
+  world: EnemyWorld;
   run: (seconds: number) => void;
 }
 
@@ -76,6 +77,7 @@ function setup(
     player,
     shots: 0,
     lastFrom: null,
+    world: { physics: p, groundAt: () => 0, waterAt },
     run: (seconds) => {
       for (let t = 0; t < seconds; t += DT) {
         s.enemies.update(DT, player.aim);
@@ -91,8 +93,7 @@ function setup(
     },
     destroyed: () => {},
   };
-  const world = { physics: p, groundAt: () => 0, waterAt };
-  s.enemies = new Enemies(spawns, p, world, { create: () => new StubView() }, player, fx);
+  s.enemies = new Enemies(spawns, p, s.world, { create: () => new StubView() }, player, fx);
   return s;
 }
 
@@ -104,10 +105,11 @@ const NO_VIEW: PieceView = { add: () => 0, remove: () => {}, wear: () => {} };
 function walledIn(spawn: EnemySpawn): Setup & { building: Building } {
   const s = setup([spawn]);
   const building = new Building(physics!, NO_VIEW, { broke: () => {} });
+  s.world.built = (t) => building.owns(t);
   building.place({ kind: 'wall', i: 0, j: -1, y: 0, dir: 0 });
   s.player.at(2, 0);
   physics!.step();
-  return { ...s, building };
+  return Object.assign(s, { building });
 }
 
 describe('Enemies', () => {
@@ -169,6 +171,18 @@ describe('Enemies', () => {
     s.run(40);
     expect(s.building.count).toBe(0);
     expect(s.player.hp).toBeLessThan(100);
+  });
+
+  it('robots see the player through corners where pieces overlap', () => {
+    const s = walledIn(gunner(-6, -10));
+    // a second wall meeting the first at its corner, both in the sight line
+    s.building.place({ kind: 'wall', i: 0, j: -1, y: 0, dir: 1 });
+    s.player.at(1, -3);
+    physics!.step();
+    s.run(0.1);
+    s.enemies.hear(s.player.aim);
+    s.run(30);
+    expect(s.shots).toBeGreaterThan(0);
   });
 
   it("brawlers break the player's wall to get at them", () => {

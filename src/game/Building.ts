@@ -6,7 +6,7 @@
  */
 
 import type RAPIER from '@dimforge/rapier3d-compat';
-import { type Piece, pieceBox, pieceKey, type Plot } from './Blueprint';
+import { type Piece, pieceBox, pieceKey, type Plot, STOREY } from './Blueprint';
 import { boxColliderDesc, type Hittable, type Physics } from './Physics';
 import type { Vec3 } from './PlayerMotor';
 
@@ -72,7 +72,12 @@ export class Building implements Pick<Plot, 'near'> {
 
   /** null when `p` can be built */
   misfit(p: Piece): Misfit | null {
-    if (this.built.has(pieceKey(p))) return 'taken';
+    // nearer than a storey to its like it would cut into it, as where two
+    // structures started on different ground meet
+    for (const { piece: q } of this.built.values()) {
+      const same = q.kind === p.kind && q.i === p.i && q.j === p.j && (p.kind !== 'wall' || q.dir === p.dir);
+      if (same && Math.abs(q.y - p.y) < STOREY - 0.01) return 'taken';
+    }
     if (this.built.size >= MAX_PIECES) return 'full';
     const b = pieceBox(p);
     const inner = { ...b, hx: b.hx - CLEARANCE, hy: b.hy - CLEARANCE, hz: b.hz - CLEARANCE };
@@ -85,6 +90,11 @@ export class Building implements Pick<Plot, 'near'> {
     const built = new Built(p, collider, this.view.add(p), (b, damage) => this.hurt(b, damage));
     this.physics.tag(collider, null, built);
     this.built.set(pieceKey(p), built);
+  }
+
+  /** whether `target` is one of the pieces */
+  owns(target: Hittable): boolean {
+    return target instanceof Built;
   }
 
   /** the piece just under `feet`, if any */

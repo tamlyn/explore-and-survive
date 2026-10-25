@@ -37,8 +37,6 @@ const VIEW_HALF_ANGLE = 1.2;
 const NEAR = 8;
 /** gunshots carry this far (m) */
 const HEARING = 60;
-/** a sight line passes through at most this many of the player's pieces */
-const SEE_THROUGH = 4;
 /** drones climb or sink towards their hover height at up to this (m/s) */
 const HOVER_RATE = 3;
 /** lowest a drone comes down to (m) */
@@ -77,6 +75,9 @@ export interface EnemyWorld extends ShotWorld {
   /** the terrain collider's surface */
   groundAt(x: number, z: number): number;
   waterAt(x: number, z: number): number;
+  /** whether a target is part of the player's building, which robots see
+   *  through and attack */
+  built?: (target: Hittable) => boolean;
 }
 
 class Robot implements Hittable {
@@ -266,21 +267,19 @@ export class Enemies {
     }
     const dir = { x: dx / d, y: dy / d, z: dz / d };
     r.blocked = false;
-    let from: Vec3 = eye;
-    let left = d + 1;
-    let exclude = r.motor.collider;
-    for (let n = 0; n < SEE_THROUGH; n++) {
-      const hit = traceShot(this.world, from, dir, left, exclude);
-      if (!hit?.target || hit.target instanceof Robot || !hit.collider) return false;
-      if (hit.target === this.target) return true;
-      // something else that can be hurt: the player's building
-      if (!r.blocked) Object.assign(r.through, { x: hit.x, y: hit.y, z: hit.z });
-      r.blocked = true;
-      left -= Math.hypot(hit.x - from.x, hit.y - from.y, hit.z - from.z);
-      from = hit;
-      exclude = hit.collider;
-    }
-    return false;
+    const hit = traceShot(this.world, eye, dir, d + 1, r.motor.collider);
+    if (hit?.target === this.target) return true;
+    const { built } = this.world;
+    if (!hit?.target || !built?.(hit.target)) return false;
+    if (traceShot(this.world, eye, dir, d + 1, r.motor.collider, built)?.target !== this.target) return false;
+    Object.assign(r.through, { x: hit.x, y: hit.y, z: hit.z });
+    r.blocked = true;
+    return true;
+  }
+
+  /** robots hurt the player and what the player builds, not each other */
+  private hurts(target: Hittable | null | undefined): target is Hittable {
+    return !!target && (target === this.target || !!this.world.built?.(target));
   }
 
   /** what a robot that sees the player goes for: them, or what's in the way */
@@ -289,6 +288,8 @@ export class Enemies {
   }
 
   private attack(r: Robot): void {
+    // what was in the way may have broken since the last look
+    if (r.blocked && !(r.seen = this.sees(r))) return;
     const { attack } = r.spec;
     const aim = this.aimOf(r);
     const f = r.motor.feet;
@@ -302,7 +303,7 @@ export class Enemies {
       const dz = aim.z - eye.z;
       const d = Math.hypot(dx, dy, dz) || 1;
       const hit = traceShot(this.world, eye, { x: dx / d, y: dy / d, z: dz / d }, d + 0.5, r.motor.collider);
-      if (hit?.target && !(hit.target instanceof Robot)) hit.target.hurt(attack.damage, eye);
+      if (this.hurts(hit?.target)) hit!.target!.hurt(attack.damage, eye);
       return;
     }
     const from = r.muzzle(MUZZLE);
@@ -310,7 +311,8 @@ export class Enemies {
     const dy = aim.y - from.y;
     const dz = aim.z - from.z;
     const d = Math.hypot(dx, dy, dz);
-    const moving = Math.min(1, this.target.speed / WALK_SPEED);
+    // what's in the way holds still, however the player moves behind it
+    const moving = r.blocked ? 0 : Math.min(1, this.target.speed / WALK_SPEED);
     const dir = spreadDirection(
       { x: dx / d, y: dy / d, z: dz / d },
       attack.spread * (1 + 2 * moving),
@@ -320,7 +322,7 @@ export class Enemies {
     const range = attack.range * 1.5;
     const hit = traceShot(this.world, from, dir, range, r.motor.collider);
     // robots don't shoot each other: a round into a comrade just sparks
-    if (hit?.target && !(hit.target instanceof Robot)) hit.target.hurt(attack.damage, from);
+    if (this.hurts(hit?.target)) hit!.target!.hurt(attack.damage, from);
     const to = hit ?? { x: from.x + dir.x * range, y: from.y + dir.y * range, z: from.z + dir.z * range };
     this.fx.shot({ ...from }, { x: to.x, y: to.y, z: to.z }, hit);
   }

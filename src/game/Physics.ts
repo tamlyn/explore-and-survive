@@ -112,15 +112,23 @@ export class Physics {
     this.targets.delete(collider.handle);
   }
 
-  /** first solid hit along a ray; `dir` must be unit length */
+  /** first solid hit along a ray; `dir` must be unit length. Colliders of
+   *  targets that `see` passes are seen through. */
   castRay(
     origin: { x: number; y: number; z: number },
     dir: { x: number; y: number; z: number },
     maxDistance: number,
     exclude?: RAPIER.Collider,
+    see?: (target: Hittable) => boolean,
   ): RayHit | null {
     const ray = new this.rapier.Ray(origin, dir);
-    const hit = this.world.castRayAndGetNormal(ray, maxDistance, true, undefined, undefined, exclude);
+    const filter = see
+      ? (c: RAPIER.Collider): boolean => {
+          const t = this.targets.get(c.handle);
+          return !(t && see(t));
+        }
+      : undefined;
+    const hit = this.world.castRayAndGetNormal(ray, maxDistance, true, undefined, undefined, exclude, undefined, filter);
     if (!hit) return null;
     const p = ray.pointAt(hit.timeOfImpact);
     return {
