@@ -4,6 +4,8 @@ import { spreadDirection, Weapon, type WeaponSpec } from './Weapon';
 const SPEC: WeaponSpec = {
   fireInterval: 0.1,
   magazine: 3,
+  spare: 4,
+  carry: 6,
   reloadTime: 1,
   range: 100,
   damage: 10,
@@ -57,7 +59,30 @@ describe('Weapon', () => {
     expect(w.reloadProgress).toBeCloseTo(0.5, 5);
     expect(run(w, 0.6)).toEqual(['reloaded']);
     expect(w.ammo).toBe(3);
+    expect(w.spare).toBe(1);
     expect(w.reloadProgress).toBe(0);
+  });
+
+  it('reloads only what the spares hold, and not at all without them', () => {
+    const w = new Weapon({ ...SPEC, spare: 1 });
+    for (let i = 0; i < 3; i++) w.update(1, true, false);
+    w.update(1, true, false);
+    run(w, 1.1);
+    expect([w.ammo, w.spare]).toEqual([1, 0]);
+    w.update(1, true, false);
+    expect(w.update(1, true, false)).toBe('dry');
+    expect(w.reloading).toBe(false);
+    expect(w.update(1 / 60, false, true)).toBeNull();
+  });
+
+  it('carries only so many spares, and restocks to the starting number', () => {
+    const w = new Weapon(SPEC);
+    expect(w.addSpare(5)).toBe(2);
+    expect(w.spare).toBe(6);
+    w.spare = 0;
+    w.ammo = 0;
+    w.restock();
+    expect([w.ammo, w.spare]).toEqual([3, 4]);
   });
 
   it('reloads on request only when the magazine is not full', () => {

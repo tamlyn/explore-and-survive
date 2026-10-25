@@ -69,19 +69,19 @@ await page.evaluate(`(() => {
   Object.defineProperty(document, 'pointerLockElement', { get: () => canvas, configurable: true });
   document.dispatchEvent(new Event('pointerlockchange'));
 })()`);
-const AMMO = `[...document.querySelectorAll('div')].map((d) => d.textContent ?? '').find((t) => /^\\d+ \\/ \\d+$|^reloading$/.test(t)) ?? ''`;
+const AMMO = `(() => { const w = window.__laasDbg.game.weapon; return w.reloading ? 'reloading' : w.ammo + ' + ' + w.spare; })()`;
 const ammo = (): Promise<string> => page.evaluate(AMMO) as Promise<string>;
 const before = await ammo();
 await page.mouse.click(640, 400);
 await page.waitForTimeout(300);
 const after = await ammo();
-check(before === '12 / 12' && after === '11 / 12', `firing spends a round (${before} → ${after})`);
+check(before === '12 + 24' && after === '11 + 24', `firing spends a round (${before} → ${after})`);
 await page.keyboard.press('KeyR');
 await page.waitForTimeout(300);
 const reloading = await ammo();
 await page.waitForTimeout(1500);
 const reloaded = await ammo();
-check(reloading === 'reloading' && reloaded === '12 / 12', `R reloads (${reloading} → ${reloaded})`);
+check(reloading === 'reloading' && reloaded === '12 + 23', `R reloads (${reloading} → ${reloaded})`);
 
 // mouse down looks down, or up once Y inverts it
 const pitchAfterDrag = async (): Promise<number> => {

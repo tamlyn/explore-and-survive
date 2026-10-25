@@ -9,7 +9,8 @@
  * The player's fixed physics tick advances the whole world, robots
  * included, so in fly mode the robots hold still. The player has health;
  * dying costs a few seconds and puts them back at the last checkpoint they
- * stood by (see Checkpoints), or at the spawn.
+ * stood by (see Checkpoints), or at the spawn, with at least the ammo they
+ * started with.
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -107,6 +108,7 @@ interface Attached {
   player: Player;
   rig: FirstPersonRig;
   obstacles: ObstacleStreamer | null;
+  weapon: Weapon;
   gunplay: Gunplay;
   impacts: Impacts;
   tracers: Tracers;
@@ -224,8 +226,9 @@ export class Game {
       world.places?.sites.flatMap((s) => s.buildings) ?? [],
       checkpoints,
     );
+    const weapon = new Weapon(PISTOL);
     const gunplay = new Gunplay(
-      { weapon: new Weapon(PISTOL), viewmodel: this.viewmodel, impacts, sfx, hud },
+      { weapon, viewmodel: this.viewmodel, impacts, sfx, hud },
       { physics, obstacles: world.obstacles, waterAt: world.waterAt },
       motor.collider,
     );
@@ -236,6 +239,7 @@ export class Game {
       player,
       rig: new FirstPersonRig(this.camera),
       obstacles,
+      weapon,
       gunplay,
       impacts,
       tracers,
@@ -251,6 +255,10 @@ export class Game {
 
   get enemies(): Enemies | null {
     return this.attached?.enemies ?? null;
+  }
+
+  get weapon(): Weapon | null {
+    return this.attached?.weapon ?? null;
   }
 
   get checkpoints(): Checkpoints | null {
@@ -343,6 +351,7 @@ export class Game {
     a.player.spawn(spot.x, spot.y, spot.z, home ? a.player.yaw : a.world.spawn.yaw, 0);
     a.rig.reset();
     a.health.reset();
+    a.weapon.restock();
     a.enemies?.forget();
     a.hud.dead = false;
     a.gunplay.active = true;
@@ -374,6 +383,7 @@ export class Game {
     a.rig.update(0, a.player);
     if (a.health.dead) {
       a.health.reset();
+      a.weapon.restock();
       a.hud.dead = false;
       a.enemies?.forget();
     }
