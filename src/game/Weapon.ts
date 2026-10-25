@@ -67,6 +67,8 @@ export class Weapon {
   /** a full magazine and at least the starting spares, as after respawning */
   restock(): void {
     this.reloadLeft = 0;
+    this.pending = 0;
+    this.cooldown = 0;
     this.ammo = this.spec.magazine;
     this.spare = Math.max(this.spare, this.spec.spare);
   }

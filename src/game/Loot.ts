@@ -84,27 +84,25 @@ export class Loot {
     if (medkit) this.add({ kind: 'medkit', amount: DROP_MEDKIT.amount }, x - dx, y, z - dz);
   }
 
-  /** take everything within reach of the feet at `at` that `wants` will
-   *  have, and say what it was */
-  reach(at: Vec3, wants: (kind: LootKind) => boolean): Haul[] {
-    const taken: Haul[] = [];
+  /** offer everything within reach of the feet at `at` to `use`, which
+   *  says whether it was taken; each is offered after the last is used, so
+   *  a second medkit isn't wasted on a player the first one healed */
+  reach(at: Vec3, use: (haul: Haul) => boolean): void {
     this.caches.forEach((c, i) => {
-      if (!this.left[i] || !wants(c.kind)) return;
+      if (!this.left[i]) return;
       const { box } = c;
       if (Math.abs(at.y - box.y) > 2) return;
       if (Math.hypot(at.x - box.x, at.z - box.z) > Math.hypot(box.hx, box.hz) + CACHE_REACH) return;
+      if (!use(c)) return;
       this.left[i] = false;
       this.cacheView.take(i);
-      taken.push({ kind: c.kind, amount: c.amount });
     });
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i]!;
-      if (!wants(d.kind) || Math.hypot(at.x - d.x, at.y - d.y, at.z - d.z) > DROP_REACH) continue;
+      if (Math.hypot(at.x - d.x, at.y - d.y, at.z - d.z) > DROP_REACH || !use(d)) continue;
       this.drops.splice(i, 1);
       this.dropView.remove(d.id);
-      taken.push({ kind: d.kind, amount: d.amount });
     }
-    return taken;
   }
 
   private add(haul: Haul, x: number, y: number, z: number): void {

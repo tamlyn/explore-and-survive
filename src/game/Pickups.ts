@@ -79,6 +79,7 @@ export class Pickups implements DropView {
       mesh.castShadow = true;
       mesh.frustumCulled = false;
       for (let i = 0; i < MAX_DROPS; i++) mesh.setMatrixAt(i, HIDDEN);
+      mesh.count = 0;
       return { mesh, slots: new Array<Vector3 | null>(MAX_DROPS).fill(null) };
     };
     this.pools = { ammo: pool('ammo'), medkit: pool('medkit') };
@@ -90,6 +91,7 @@ export class Pickups implements DropView {
     const slot = slots.indexOf(null);
     if (slot < 0) throw new Error(`more than ${MAX_DROPS} ${kind} pickups`);
     slots[slot] = new Vector3(x, y, z);
+    this.pools[kind].mesh.count = Math.max(this.pools[kind].mesh.count, slot + 1);
     return KINDS.indexOf(kind) * MAX_DROPS + slot;
   }
 
@@ -98,22 +100,24 @@ export class Pickups implements DropView {
     slots[id % MAX_DROPS] = null;
     mesh.setMatrixAt(id % MAX_DROPS, HIDDEN);
     mesh.instanceMatrix.needsUpdate = true;
+    // draw only up to the last slot in use
+    while (mesh.count > 0 && !slots[mesh.count - 1]) mesh.count--;
   }
 
   update(dt: number): void {
     this.t += dt;
     for (const { mesh, slots } of Object.values(this.pools)) {
-      let any = false;
-      slots.forEach((at, i) => {
-        if (!at) return;
+      if (mesh.count === 0) continue;
+      for (let i = 0; i < mesh.count; i++) {
+        const at = slots[i];
+        if (!at) continue;
         // each turns out of step with the others
         const phase = this.t + i * 1.7;
         Q.setFromAxisAngle(UP, phase * SPIN);
         P.set(at.x, at.y + HOVER + Math.sin(phase * 2) * BOB, at.z);
         mesh.setMatrixAt(i, M.compose(P, Q, ONE));
-        any = true;
-      });
-      if (any) mesh.instanceMatrix.needsUpdate = true;
+      }
+      mesh.instanceMatrix.needsUpdate = true;
     }
   }
 }

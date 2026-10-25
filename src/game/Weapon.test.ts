@@ -85,6 +85,14 @@ describe('Weapon', () => {
     expect([w.ammo, w.spare]).toEqual([3, 4]);
   });
 
+  it('forgets a press made just before restocking', () => {
+    const w = new Weapon(SPEC);
+    w.update(1 / 60, true, false);
+    w.update(1 / 60, true, false);
+    w.restock();
+    expect(run(w, 0.2)).toEqual([]);
+  });
+
   it('reloads on request only when the magazine is not full', () => {
     const w = new Weapon(SPEC);
     expect(w.update(1 / 60, false, true)).toBeNull();

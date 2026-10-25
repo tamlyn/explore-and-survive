@@ -36,7 +36,7 @@ import { GameHud } from './GameHud';
 import { Gunplay } from './Gunplay';
 import { Health } from './Health';
 import { Impacts } from './Impacts';
-import { type Cache, type CacheView, type DropView, Loot, type LootKind } from './Loot';
+import { type Cache, type CacheView, type DropView, Loot } from './Loot';
 import { ObstacleStreamer, type ObstacleField } from './Obstacles';
 import type { Box } from '../world/Box';
 import { boxColliderDesc, loadRapier, Physics, type Surface, type TerrainGrid } from './Physics';
@@ -88,6 +88,8 @@ const CHEST = 1.3;
 const LOOK_RANGE = 1000;
 /** the player stops this far inside the terrain's edge (m) */
 const WORLD_EDGE_MARGIN = 2;
+
+const DOWN = { x: 0, y: -1, z: 0 };
 
 /** what a ray stopped on, when nothing more specific stands there */
 const SURFACE_NAMES: Record<ImpactSurface, string> = {
@@ -210,7 +212,9 @@ export class Game {
             },
             destroyed: (at) => {
               sfx.powerDown(at);
-              loot?.drop(at.x, groundAt(at.x, at.z), at.z);
+              // on whatever the wreck came down on, or afloat
+              const below = physics.castRay({ x: at.x, y: at.y + 0.5, z: at.z }, DOWN, 50);
+              loot?.drop(at.x, Math.max(below?.y ?? groundAt(at.x, at.z), world.waterAt(at.x, at.z)), at.z);
             },
           },
         )
@@ -367,13 +371,20 @@ export class Game {
   }
 
   private collect(a: Attached): void {
-    const wants = (kind: LootKind): boolean =>
-      kind === 'ammo' ? a.weapon.spare < a.weapon.spec.carry : a.health.hp < a.health.max;
-    for (const haul of a.loot?.reach(a.motor.feet, wants) ?? []) {
-      if (haul.kind === 'ammo') a.hud.toast(`+${a.weapon.addSpare(haul.amount)} rounds`);
-      else a.hud.toast(`+${Math.round(a.health.heal(haul.amount))} health`);
-      a.sfx.pickup();
-    }
+    const got: string[] = [];
+    a.loot?.reach(a.motor.feet, (haul) => {
+      if (haul.kind === 'ammo') {
+        const n = a.weapon.addSpare(haul.amount);
+        if (n > 0) got.push(`+${n} rounds`);
+        return n > 0;
+      }
+      const n = Math.round(a.health.heal(haul.amount));
+      if (n > 0) got.push(`+${n} health`);
+      return n > 0;
+    });
+    if (!got.length) return;
+    a.hud.toast(got.join(' · '));
+    a.sfx.pickup();
   }
 
   /** the body lies still while the world carries on, then back to the last
