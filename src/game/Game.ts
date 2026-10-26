@@ -13,7 +13,10 @@
  * stood by (see Checkpoints), or at the spawn. Medkits come from crates and
  * wrecked robots, which also leave metal (see Loot), and health only
  * regenerates part of the way. The axe fells trees for wood (see Lumber),
- * which builds walls, floors and ramps (see Builder).
+ * which builds walls, floors and ramps (see Builder). Metal buys cars at
+ * claimed beacons (see Garage); E gets in and out, and C swaps the driver's
+ * seat for the view from behind. At the wheel the car takes the robots'
+ * fire instead of the player, until it's wrecked and throws them out.
  *
  * Programmatic poses (bookmarks, ?cam=, probes) always switch to fly so the
  * tooling keeps free-placement semantics. The world (terrain, physics, the
@@ -57,6 +60,12 @@ import { type ImpactSurface, traceShot } from './Shot';
 import { Tracers } from './Tracers';
 import { Viewmodel, type WorldLights } from './Viewmodel';
 import { PISTOL, Weapon } from './Weapon';
+import { Driver } from './Driver';
+import { Garage } from './Garage';
+import type { Pose, Vehicle } from './Vehicle';
+import type { VehicleViews } from './VehicleModels';
+import { VehicleRig } from './VehicleRig';
+import { Vehicles } from './Vehicles';
 
 /** what a world scene hands the game layer */
 export interface GameWorld {
@@ -82,6 +91,8 @@ export interface GameWorld {
   loot?: { caches: Cache[]; cacheView: CacheView; dropView: DropView };
   /** how the player's building is drawn */
   building?: PieceView & GhostView;
+  /** how cars are drawn — absent in scenes without them */
+  vehicles?: VehicleViews;
 }
 
 export type ControlMode = 'play' | 'fly';
@@ -102,12 +113,17 @@ const LOOK_RANGE = 1000;
 const WORLD_EDGE_MARGIN = 2;
 
 const DOWN = { x: 0, y: -1, z: 0 };
+const POSE: Pose = { p: { x: 0, y: 0, z: 0 }, q: { x: 0, y: 0, z: 0, w: 1 } };
 /** for scenes that don't draw building */
 const UNSEEN: PieceView & GhostView = { add: () => 0, remove: () => {}, wear: () => {}, ghost: () => {} };
 /** enough to build a first shelter before felling a tree */
 const START_WOOD = 10;
 /** a felled tree's wood comes as logs of up to this much */
 const WOOD_PER_LOG = 3;
+/** a car wrecked under the player hurts them this much as they're thrown out */
+const WRECK_HURT = 25;
+/** robots aim at the driver this far below their eyes (m) */
+const SEAT_CHEST = 0.4;
 
 /** what a ray stopped on, when nothing more specific stands there */
 const SURFACE_NAMES: Record<ImpactSurface, string> = {
@@ -138,13 +154,21 @@ interface Attached {
   impacts: Impacts;
   tracers: Tracers;
   health: Health;
+  /** the player as robots see them */
+  target: EnemyTarget;
   hud: GameHud;
   sfx: Sfx;
   enemies: Enemies | null;
   checkpoints: Checkpoints | null;
   loot: Loot | null;
   building: Building;
-  /** wood and metal gathered, for building and buying with later */
+  vehicles: Vehicles | null;
+  garage: Garage | null;
+  driver: Driver;
+  vehicleRig: VehicleRig;
+  /** the car the player was just thrown out of, to be dealt with after the tick */
+  thrownFrom: Vehicle | null;
+  /** wood and metal gathered, for building and buying with */
   carried: Record<Material, number>;
   radar: Radar;
   /** seconds since dying, while dead */
@@ -188,21 +212,40 @@ export class Game {
     const tracers = new Tracers(this.scene);
     const aim: Vec3 = { x: 0, y: 0, z: 0 };
     let player: Player | null = null;
+    let driver: Driver | null = null;
+    let vehicleRig: VehicleRig | null = null;
+    // at the wheel, the player is the car: robots shoot at the driver's seat
+    // and their rounds wear the car down
     const target: EnemyTarget = {
       get aim() {
+        const v = driver?.vehicle;
+        if (v) {
+          v.toWorld(v.spec.seat, aim);
+          aim.y -= SEAT_CHEST;
+          return aim;
+        }
         aim.x = motor.feet.x;
         aim.y = motor.feet.y + CHEST;
         aim.z = motor.feet.z;
         return aim;
       },
       get speed() {
-        return player?.speed ?? 0;
+        const v = driver?.vehicle;
+        return v ? Math.abs(v.speed) : (player?.speed ?? 0);
       },
       get alive() {
         return !health.dead;
       },
       hurt: (damage, from) => {
         if (health.dead) return;
+        const v = driver?.vehicle;
+        if (v) {
+          v.hurt(damage, from);
+          const at = v.toWorld(v.spec.seat, { x: 0, y: 0, z: 0 });
+          hud.hurt(bearing(from.x, from.z, at.x, at.z, vehicleRig?.yaw ?? v.yaw));
+          sfx.chop('metal');
+          return;
+        }
         health.hurt(damage);
         hud.hurt(bearing(from.x, from.z, motor.feet.x, motor.feet.z, player?.yaw ?? 0));
         sfx.hurt();
@@ -255,9 +298,38 @@ export class Game {
           },
         )
       : null;
-    player = new Player(motor, () => {
+    const vehicles = world.vehicles
+      ? new Vehicles(
+          physics,
+          { waterAt: world.waterAt, edge: motor.edge, groundAt },
+          world.vehicles,
+          {
+            rammed: (at, damage) => sfx.crash(at, damage / 150),
+            wrecked: (v, at) => {
+              sfx.explosion(at);
+              for (let k = 0; k < 6; k++) {
+                const x = at.x + (Math.random() - 0.5) * 3;
+                const z = at.z + (Math.random() - 0.5) * 3;
+                impacts.spawn({ x, y: at.y + Math.random(), z, normal: { x: 0, y: 1, z: 0 }, surface: 'stone', target: null });
+              }
+              if (this.attached && v === driver?.vehicle) this.attached.thrownFrom = v;
+            },
+          },
+          (t) => t === target,
+        )
+      : null;
+    // on foot or at the wheel, the world moves on at the same fixed rate
+    const stepWorld = (): void => {
       enemies?.tick(FIXED_DT);
+      vehicles?.tick(FIXED_DT);
       physics.step();
+      vehicles?.record();
+    };
+    player = new Player(motor, stepWorld);
+    driver = new Driver(stepWorld);
+    vehicleRig = new VehicleRig(this.camera, {
+      reach: (from, dir, max, v) => physics.castRay(from, dir, max, v.collider)?.distance ?? max,
+      groundAt,
     });
     // robots walk among the trees as far out as they stay awake
     const obstacles = world.obstacles
@@ -307,6 +379,8 @@ export class Game {
         : null;
     const carried = { wood: START_WOOD, metal: 0 };
     hud.carry(carried);
+    const garage =
+      vehicles && checkpoints ? new Garage({ vehicles, checkpoints, hud, sfx }, carried) : null;
     const builder = new Builder({ building, ghost: buildingView, sfx, hud }, carried, motor, groundAt);
     const swing = new Swing(AXE);
     const arms = new Arms({
@@ -330,12 +404,18 @@ export class Game {
       impacts,
       tracers,
       health,
+      target,
       hud,
       sfx,
       enemies,
       checkpoints,
       loot,
       building,
+      vehicles,
+      garage,
+      driver,
+      vehicleRig,
+      thrownFrom: null,
       carried,
       radar,
       deadFor: 0,
@@ -401,30 +481,19 @@ export class Game {
 
     const a = this.attached;
     if (this.modeV === 'play' && a) {
-      const { player } = a;
-      a.obstacles?.update(player.eye.x, player.eye.z);
-      if (a.health.dead) {
-        input.takeLook(); // no turning the corpse, nor a snap on respawn
-        this.whileDead(dt, a);
-      } else {
-        player.update(dt, input);
-        // robots act inside the physics tick, so this frame may have killed
-        if (a.health.dead) this.die(a);
-        else {
-          if (a.arms.update(dt, input, player)) a.enemies?.hear(player.eye);
-          this.reachCheckpoint(a);
-          this.collect(a);
-          a.loot?.update(dt, a.motor.feet);
-        }
+      if (!a.health.dead && input.takePress('KeyE')) {
+        const car = a.vehicles?.reachable(a.motor.feet);
+        if (a.driver.vehicle) this.getOut(a);
+        else if (car && !car.wrecked) this.getIn(a, car);
       }
-      a.rig.update(dt, player);
-      const trunks = a.world.obstacles?.trunksNear(player.eye.x, player.eye.z, CANOPY_R) ?? 0;
-      this.viewmodel.canopy = Math.min(1, trunks / CANOPY_TRUNKS);
-      a.arms.updateView(dt, player);
+      if (a.driver.vehicle) this.drive(dt, a);
+      else this.walk(dt, a);
       a.health.update(dt);
       a.hud.updateVitals(dt, a.health.hp, a.health.max);
-      a.radar.update(player.eye.x, player.eye.z, player.yaw);
-      Object.assign(a.sfx.listener, { x: player.eye.x, z: player.eye.z, yaw: player.yaw });
+      const at = this.focus(a);
+      const yaw = a.driver.vehicle ? a.vehicleRig.yaw : a.player.yaw;
+      a.radar.update(at.x, at.z, yaw);
+      Object.assign(a.sfx.listener, { x: at.x, z: at.z, yaw });
     } else {
       this.fly.update(dt, input);
     }
@@ -434,8 +503,113 @@ export class Game {
     a?.tracers.update(dt);
     a?.hud.updateToast(dt);
     if (a) a.radar.visible = this.modeV === 'play';
-    a?.enemies?.update(dt, this.modeV === 'play' ? a.player.eye : this.camera.position);
+    a?.enemies?.update(dt, this.modeV === 'play' ? this.focus(a) : this.camera.position);
+    a?.vehicles?.update(this.modeV === 'fly' ? 1 : a.driver.vehicle ? a.driver.alpha : a.player.alpha);
     input.endFrame();
+  }
+
+  /** where the player is: on foot, their eye; at the wheel, the car */
+  private focus(a: Attached): Vec3 {
+    const v = a.driver.vehicle;
+    return v ? v.pose(a.driver.alpha, POSE).p : a.player.eye;
+  }
+
+  private walk(dt: number, a: Attached): void {
+    const { input } = this;
+    const { player } = a;
+    a.obstacles?.update(player.eye.x, player.eye.z);
+    if (a.health.dead) {
+      input.takeLook(); // no turning the corpse, nor a snap on respawn
+      this.whileDead(dt, a);
+    } else {
+      player.update(dt, input);
+      // robots act inside the physics tick, so this frame may have killed
+      if (a.health.dead) this.die(a);
+      else {
+        // before the arms, so the number keys buy while the list is open
+        a.garage?.update(input, a.motor.feet);
+        if (a.arms.update(dt, input, player)) a.enemies?.hear(player.eye);
+        this.reachCheckpoint(a, a.motor.feet);
+        this.collect(a, a.motor.feet);
+        a.loot?.update(dt, a.motor.feet);
+      }
+    }
+    a.hud.prompt(a.health.dead ? null : this.footPrompt(a));
+    a.rig.update(dt, player);
+    const trunks = a.world.obstacles?.trunksNear(player.eye.x, player.eye.z, CANOPY_R) ?? 0;
+    this.viewmodel.canopy = Math.min(1, trunks / CANOPY_TRUNKS);
+    a.arms.updateView(dt, player);
+  }
+
+  /** what a key would do where the player stands */
+  private footPrompt(a: Attached): string | null {
+    const car = a.vehicles?.reachable(a.motor.feet);
+    if (car) return car.wrecked ? `The ${car.spec.name} is wrecked` : `E  drive the ${car.spec.name}`;
+    if (a.garage?.at(a.motor.feet) && !a.garage.open) return 'B  buy a vehicle';
+    return null;
+  }
+
+  private drive(dt: number, a: Attached): void {
+    const { input } = this;
+    const v = a.driver.vehicle!;
+    if (input.takePress('KeyC')) a.vehicleRig.view = a.vehicleRig.view === 'first' ? 'third' : 'first';
+    if (input.takePress('KeyR') && !v.upright) v.right();
+    a.driver.update(dt, input);
+    if (a.thrownFrom) {
+      this.thrownOut(a);
+      return;
+    }
+    const pose = v.pose(a.driver.alpha, POSE);
+    a.obstacles?.update(pose.p.x, pose.p.z);
+    a.vehicleRig.update(dt, v, pose, a.driver.lookYaw, a.driver.lookPitch);
+    this.reachCheckpoint(a, pose.p);
+    this.collect(a, pose.p);
+    a.loot?.update(dt, pose.p);
+    a.hud.car(v.health.hp / v.health.max);
+    a.hud.prompt(v.upright ? null : 'R  back on your wheels');
+    a.sfx.engine({ rev: Math.min(1, Math.abs(v.speed) / v.spec.topSpeed), load: Math.abs(v.controls.throttle) });
+  }
+
+  private getIn(a: Attached, v: Vehicle): void {
+    a.garage?.close();
+    a.hud.prompt(null);
+    a.arms.active = false;
+    a.hud.visible = true;
+    a.hud.driving(v.spec.name);
+    // the player's body waits out of the way; the car stands in for it
+    a.motor.collider.setEnabled(false);
+    a.physics.tag(v.collider, 'metal', a.target);
+    a.driver.take(v);
+    a.vehicleRig.reset(v);
+    this.camera.fov = a.rig.baseFov;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** out of the car and, unless the camera's being handed to fly, on foot
+   *  beside its door */
+  private getOut(a: Attached, onFoot = true): Vehicle {
+    const v = a.driver.leave()!;
+    a.physics.tag(v.collider, 'metal', v);
+    a.motor.collider.setEnabled(true);
+    a.sfx.engine(null);
+    a.hud.driving(null);
+    if (!onFoot) return v;
+    const door = v.toWorld(v.spec.exit, { x: 0, y: 0, z: 0 });
+    const spot = this.spotNear(a, door.x, door.z);
+    a.player.spawn(spot.x, spot.y, spot.z, a.vehicleRig.yaw, 0);
+    a.rig.reset();
+    a.arms.active = true;
+    return v;
+  }
+
+  /** the car was wrecked with the player in it */
+  private thrownOut(a: Attached): void {
+    a.thrownFrom = null;
+    const v = this.getOut(a);
+    a.hud.toast(`The ${v.spec.name} is wrecked`);
+    a.health.hurt(WRECK_HURT);
+    a.sfx.hurt();
+    if (a.health.dead) this.die(a);
   }
 
   private die(a: Attached): void {
@@ -445,18 +619,18 @@ export class Game {
     a.hud.dead = true;
   }
 
-  private reachCheckpoint(a: Attached): void {
+  private reachCheckpoint(a: Attached, at: Vec3): void {
     const cps = a.checkpoints;
-    const c = cps?.reach(a.motor.feet.x, a.motor.feet.z);
+    const c = cps?.reach(at.x, at.z);
     if (!cps || !c) return;
     const name = a.world.places?.name(c.site) ?? '';
     a.hud.toast(`Checkpoint ${name} · ${cps.count} of ${cps.total}`);
     a.sfx.chime();
   }
 
-  private collect(a: Attached): void {
+  private collect(a: Attached, at: Vec3): void {
     const got: string[] = [];
-    a.loot?.reach(a.motor.feet, (haul) => {
+    a.loot?.reach(at, (haul) => {
       if (haul.kind === 'medkit') {
         const n = Math.round(a.health.heal(haul.amount));
         if (n > 0) got.push(`+${n} health`);
@@ -530,6 +704,7 @@ export class Game {
   /** place the free camera; programmatic poses always mean fly */
   setPose(pose: CamPose): void {
     if (this.modeV === 'play') {
+      if (this.attached?.driver.vehicle) this.getOut(this.attached, false);
       this.modeV = 'fly';
       if (this.attached) this.attached.arms.active = false;
       // eslint-disable-next-line no-console
@@ -588,6 +763,10 @@ export class Game {
 
   getPose(): CamPose {
     const a = this.attached;
+    if (this.modeV === 'play' && a?.driver.vehicle) {
+      const { x, y, z } = this.camera.position;
+      return { p: [x, y, z], yaw: a.vehicleRig.yaw, pitch: a.vehicleRig.pitch, fov: a.rig.baseFov };
+    }
     if (this.modeV === 'play' && a) {
       const { eye, yaw, pitch } = a.player;
       return { p: [eye.x, eye.y, eye.z], yaw, pitch, fov: a.rig.baseFov };

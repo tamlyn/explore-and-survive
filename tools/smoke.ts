@@ -3,7 +3,7 @@
  * plays: starts in play mode, the world has ruins and robots, walking moves
  * them, the eye stays at head height above the ground, the gun fires and
  * reloads, the axe can be picked, beacons can be claimed, scrap can be
- * picked up, and nothing throws.
+ * picked up, a car can be bought, driven and wrecked, and nothing throws.
  * Needs the dev server (LAAS_URL, default :5173).
  *
  *   npm run smoke
@@ -141,6 +141,57 @@ await page.mouse.click(640, 400);
 await page.waitForTimeout(200);
 const built = (await page.evaluate(`(() => { const a = window.__laasDbg.game.attached; return [a.building.count, a.carried.wood]; })()`)) as number[];
 check(built[0] === 1 && built[1] === 9, `3 then a click builds a wall for wood (${built[0]} built, ${built[1]} wood left)`);
+
+// back at the claimed beacon with metal to spend: B then 1 buys a buggy
+if (beacon) {
+  await page.keyboard.press('Digit1');
+  await page.evaluate(`(() => {
+    const a = window.__laasDbg.game.attached;
+    a.carried.metal = 40;
+    a.player.spawn(${beacon.x + 2}, ${beacon.y + 0.5}, ${beacon.z}, 0, 0);
+  })()`);
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyB');
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Digit1');
+  await page.waitForTimeout(500);
+  const bought = (await page.evaluate(
+    `(() => { const a = window.__laasDbg.game.attached; return [a.vehicles.list.length, a.carried.metal]; })()`,
+  )) as number[];
+  check(bought[0] === 1 && bought[1] === 25, `B then 1 at a claimed beacon buys a buggy (${bought[0]} bought, ${bought[1]} metal left)`);
+
+  // beside its door, E gets in; W drives; E gets out again
+  await page.evaluate(`(() => {
+    const a = window.__laasDbg.game.attached; const v = a.vehicles.list[0];
+    const p = v.toWorld(v.spec.exit, { x: 0, y: 0, z: 0 });
+    a.player.spawn(p.x, p.y + 0.5, p.z, v.yaw, 0);
+  })()`);
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(300);
+  const CAR = `(() => { const a = window.__laasDbg.game.attached; const v = a.vehicles.list[0]; const t = v.body.translation();
+    return { x: t.x, z: t.z, driving: a.driver.vehicle === v, hp: v.health.hp, playerHp: a.health.hp }; })()`;
+  type Car = { x: number; z: number; driving: boolean; hp: number; playerHp: number };
+  const parked = (await page.evaluate(CAR)) as Car;
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(2500);
+  await page.keyboard.up('KeyW');
+  const drove = (await page.evaluate(CAR)) as Car;
+  const dist = Math.hypot(drove.x - parked.x, drove.z - parked.z);
+  check(parked.driving && dist > 5, `E gets in and W drives (${dist.toFixed(1)} m in 2.5 s)`);
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(300);
+  const out = (await page.evaluate(CAR)) as Car;
+  check(!out.driving, 'E gets out again');
+
+  // a car wrecked with the player in it throws them out, hurt
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(300);
+  await page.evaluate(`(() => { const v = window.__laasDbg.game.attached.vehicles.list[0]; v.hurt(v.health.hp, v.body.translation()); })()`);
+  await page.waitForTimeout(300);
+  const wreck = (await page.evaluate(CAR)) as Car;
+  check(!wreck.driving && wreck.hp === 0 && wreck.playerHp < 100, `a wreck throws the driver out (${Math.round(wreck.playerHp)} health)`);
+}
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 

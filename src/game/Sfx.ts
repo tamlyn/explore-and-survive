@@ -18,6 +18,7 @@ export class Sfx {
   private ctx: AudioContext | null = null;
   private out: GainNode | null = null;
   private noise: AudioBuffer | null = null;
+  private motor: { oscs: OscillatorNode[]; lp: BiquadFilterNode; gain: GainNode } | null = null;
 
   shot(): void {
     const ctx = this.context();
@@ -206,6 +207,88 @@ export class Sfx {
     osc.connect(envelope(ctx, t, 0.4, 0.18)).connect(this.output());
     osc.start(t);
     osc.stop(t + 0.2);
+  }
+
+  /** the engine of the car being driven: `rev` 0 idling … 1 flat out, and
+   *  `load` how hard it's pulling; null stops it */
+  engine(state: { rev: number; load: number } | null): void {
+    if (!state) {
+      if (this.motor) {
+        const t = this.motor.gain.context.currentTime;
+        this.motor.gain.gain.setTargetAtTime(0, t, 0.08);
+        for (const o of this.motor.oscs) o.stop(t + 0.5);
+        this.motor = null;
+      }
+      return;
+    }
+    const ctx = this.context();
+    if (!this.motor) {
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      // two detuned saws beat against each other like a rough old engine
+      const oscs = [0, 7].map((cents) => {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.detune.value = cents;
+        o.connect(lp);
+        o.start();
+        return o;
+      });
+      lp.connect(gain).connect(this.output());
+      this.motor = { oscs, lp, gain };
+    }
+    const t = ctx.currentTime;
+    const { rev, load } = state;
+    for (const o of this.motor.oscs) o.frequency.setTargetAtTime(32 + rev * 85, t, 0.06);
+    this.motor.lp.frequency.setTargetAtTime(300 + rev * 900 + load * 700, t, 0.06);
+    this.motor.gain.gain.setTargetAtTime(0.1 + load * 0.12, t, 0.08);
+  }
+
+  /** a car hitting something hard: a crunch of metal, louder the harder */
+  crash(at: Vec3, strength: number): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const out = this.placed(at);
+    const loud = Math.min(1, 0.3 + strength);
+    const bang = this.noiseSource(ctx);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(3000, t);
+    lp.frequency.exponentialRampToValueAtTime(200, t + 0.3);
+    bang.connect(lp).connect(envelope(ctx, t, loud, 0.35)).connect(out);
+    bang.start(t, Math.random() * 0.5);
+    bang.stop(t + 0.4);
+    const clang = ctx.createOscillator();
+    clang.type = 'square';
+    clang.frequency.setValueAtTime(220, t);
+    clang.frequency.exponentialRampToValueAtTime(90, t + 0.2);
+    clang.connect(envelope(ctx, t, loud * 0.25, 0.25)).connect(out);
+    clang.start(t);
+    clang.stop(t + 0.3);
+  }
+
+  /** a car going up: a boom and a long roar */
+  explosion(at: Vec3): void {
+    const ctx = this.context();
+    const t = ctx.currentTime;
+    const out = this.placed(at);
+    const boom = ctx.createOscillator();
+    boom.frequency.setValueAtTime(110, t);
+    boom.frequency.exponentialRampToValueAtTime(28, t + 0.8);
+    boom.connect(envelope(ctx, t, 1, 0.9)).connect(out);
+    boom.start(t);
+    boom.stop(t + 1);
+    const roar = this.noiseSource(ctx);
+    roar.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(2500, t);
+    lp.frequency.exponentialRampToValueAtTime(150, t + 1.8);
+    roar.connect(lp).connect(envelope(ctx, t, 1, 1.8)).connect(out);
+    roar.start(t);
+    roar.stop(t + 2);
   }
 
   /** a gain and pan for a sound at `at`, relative to the listener */

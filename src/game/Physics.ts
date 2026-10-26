@@ -1,7 +1,7 @@
 /**
  * Physics — the Rapier world the game layer shares: the terrain as a
  * heightfield collider plus whatever bodies the game adds (player, streamed
- * obstacles). Stepped at a fixed rate by its owner.
+ * obstacles, vehicles). Stepped at a fixed rate by its owner.
  */
 
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -9,6 +9,10 @@ import type { Box } from '../world/Box';
 import type { Vec3 } from './PlayerMotor';
 
 export type Rapier = typeof RAPIER;
+
+/** pulls on dynamic bodies — only vehicles; characters fall by their own
+ *  game-feel gravity. Heavier than Earth's, so cars don't float off bumps. */
+export const WORLD_GRAVITY = 15;
 
 /** what a static collider is made of — drives impact effects */
 export type Surface = 'ground' | 'wood' | 'stone' | 'metal' | 'rubber';
@@ -79,7 +83,7 @@ export class Physics {
     readonly rapier: Rapier,
     terrain: TerrainGrid | null,
   ) {
-    this.world = new rapier.World({ x: 0, y: 0, z: 0 });
+    this.world = new rapier.World({ x: 0, y: -WORLD_GRAVITY, z: 0 });
     this.terrain = terrain ? this.addCollider(terrainColliderDesc(rapier, terrain), 'ground') : null;
     // colliders only become visible to queries once the broad phase has run
     this.world.step();
@@ -151,6 +155,17 @@ export class Physics {
       const target = this.targets.get(c.handle);
       if (target) found.push(target);
       return true;
+    });
+    return found;
+  }
+
+  /** whether anything at all, the ground included, cuts into a box */
+  occupied(b: Box): boolean {
+    let found = false;
+    const [x, y, z, w] = b.q;
+    this.world.intersectionsWithShape(b, { x, y, z, w }, new this.rapier.Cuboid(b.hx, b.hy, b.hz), () => {
+      found = true;
+      return false;
     });
     return found;
   }

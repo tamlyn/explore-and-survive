@@ -59,6 +59,11 @@ export class Player {
     return Math.hypot(this.vel.x, this.vel.z);
   }
 
+  /** how far between the last physics tick and the next the frame falls */
+  get alpha(): number {
+    return this.acc / FIXED_DT;
+  }
+
   /** place the player with their feet at (x, y, z), at rest */
   spawn(x: number, y: number, z: number, yaw: number, pitch: number): void {
     this.motor.teleport(x, y, z);

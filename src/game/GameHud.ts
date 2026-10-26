@@ -3,7 +3,9 @@
  * the rounds in the pistol's magazine or the piece to build, health bar,
  * wood and metal carried, a
  * red flash and an arc pointing at the attacker when hurt and the death
- * notice, shown while playing; and brief toasts, shown whenever.
+ * notice, shown while playing; at the wheel, the car's own health in place
+ * of the crosshair and tools; what a key would do here (get in a car, buy
+ * one), and the vehicles for sale; and brief toasts, shown whenever.
  */
 
 import { type Tool, TOOLS } from './Arsenal';
@@ -116,12 +118,43 @@ export class GameHud {
     ],
     this.root,
   );
+  private readonly hint = div(
+    [
+      'position:absolute', 'left:0', 'right:0', 'bottom:22%', 'text-align:center', 'display:none',
+      'color:rgba(255,255,255,0.9)', 'font-size:16px', 'text-shadow:0 1px 3px rgba(0,0,0,0.8)',
+    ],
+    this.root,
+  );
+  private readonly shopBox = div(
+    [
+      'position:absolute', 'left:50%', 'top:50%', 'transform:translate(-50%,-50%)', 'display:none',
+      'padding:14px 22px', 'border-radius:6px', 'background:rgba(8,12,10,0.75)', 'color:rgba(255,255,255,0.9)',
+      'font:14px/1.9 ui-monospace,Menlo,monospace', 'white-space:pre',
+    ],
+    this.root,
+  );
+  private readonly carRow = div(
+    [
+      'position:absolute', 'left:28px', 'bottom:72px', 'display:none', 'align-items:center', 'gap:10px',
+      'color:rgba(255,255,255,0.85)', 'font-size:15px', 'text-shadow:0 1px 3px rgba(0,0,0,0.7)',
+    ],
+    this.root,
+  );
+  private readonly carName = div([], this.carRow);
+  private readonly carBar = div(
+    ['width:140px', 'height:6px', 'background:rgba(0,0,0,0.4)', 'box-shadow:0 1px 3px rgba(0,0,0,0.5)'],
+    this.carRow,
+  );
+  private readonly carFill = div(['height:100%', 'background:rgba(200,190,160,0.85)'], this.carBar);
   /** outside the root: settings change while flying too */
   private readonly toastBox = div([
     'position:fixed', 'left:0', 'right:0', 'top:20%', 'text-align:center', 'opacity:0', 'z-index:900',
     'pointer-events:none', 'color:rgba(255,255,255,0.9)', 'font-size:18px', 'text-shadow:0 1px 4px rgba(0,0,0,0.8)',
   ]);
   private shown = '';
+  private hintShown: string | null = null;
+  private carShown = -1;
+  private atWheel = false;
   private roundPips: HTMLDivElement[] = [];
   private toastLeft = 0;
   private shownHp = -1;
@@ -153,6 +186,43 @@ export class GameHud {
     this.pieces.style.display = on || this.holding !== 'build' ? 'none' : 'flex';
   }
 
+  /** at the wheel of `name`, or on foot: the car's health stands in for the
+   *  crosshair and tools */
+  driving(name: string | null): void {
+    this.atWheel = name !== null;
+    this.carName.textContent = name ? title(name) : '';
+    this.carRow.style.display = name ? 'flex' : 'none';
+    this.dot.style.display = name ? 'none' : 'block';
+    this.slots.style.display = name ? 'none' : 'flex';
+    if (name) {
+      this.ammo.style.display = 'none';
+      this.pieces.style.display = 'none';
+    } else this.tool(this.holding);
+  }
+
+  /** the car's health, 0…1 */
+  car(worn: number): void {
+    const pct = Math.round(worn * 100);
+    if (pct === this.carShown) return;
+    this.carShown = pct;
+    this.carFill.style.width = `${pct}%`;
+    this.carFill.style.background = pct < 30 ? 'rgba(220,60,40,0.9)' : 'rgba(200,190,160,0.85)';
+  }
+
+  /** what a key does here, e.g. "E  drive the buggy", or nothing */
+  prompt(text: string | null): void {
+    if (text === this.hintShown) return;
+    this.hintShown = text;
+    this.hint.textContent = text ?? '';
+    this.hint.style.display = text ? 'block' : 'none';
+  }
+
+  /** the vehicles for sale, a line each, or closed */
+  shop(lines: string[] | null): void {
+    this.shopBox.textContent = lines?.join('\n') ?? '';
+    this.shopBox.style.display = lines ? 'block' : 'none';
+  }
+
   /** the tool in hand: lit among the slots, with the ammo for the pistol
    *  or the pieces for building */
   tool(tool: Tool): void {
@@ -160,6 +230,7 @@ export class GameHud {
     this.slotLabels.forEach((d, i) => {
       d.style.color = TOOLS[i] === tool ? LIT : UNLIT;
     });
+    if (this.atWheel) return;
     this.ammo.style.display = tool === 'pistol' ? 'flex' : 'none';
     this.pieces.style.display = tool === 'build' ? 'flex' : 'none';
   }

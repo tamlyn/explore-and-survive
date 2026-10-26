@@ -40,6 +40,11 @@ export class Checkpoints {
     return this.claimed.has(index);
   }
 
+  /** a claimed checkpoint within `r` of (x, z), if any */
+  claimedNear(x: number, z: number, r: number): Checkpoint | null {
+    return this.spots.find((c, i) => this.claimed.has(i) && Math.hypot(c.x - x, c.z - z) <= r) ?? null;
+  }
+
   /** the player stands at (x, z): the checkpoint they've just claimed, if any */
   reach(x: number, z: number): Checkpoint | null {
     for (const [i, c] of this.spots.entries()) {

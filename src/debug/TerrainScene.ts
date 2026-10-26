@@ -39,6 +39,7 @@ import { BuildingView } from '../game/BuildingView';
 import { CACHE_LOOT } from '../game/Loot';
 import { Pickups } from '../game/Pickups';
 import { RobotModels } from '../game/RobotModels';
+import { VehicleModels } from '../game/VehicleModels';
 import { Props } from '../world/Props';
 import type { Box } from '../world/Box';
 import type { Surface } from '../game/Physics';
@@ -368,8 +369,12 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   if (hf.cpuHeights) {
     const building = new BuildingView(ablate.has('gi') ? null : gi, canopyTex);
     engine.scene.add(...building.meshes);
+    const vehicles = await VehicleModels.load(ablate.has('gi') ? null : gi, canopyTex);
+    engine.scene.add(vehicles.group);
+    engine.onUpdate(() => vehicles.update());
     ctx.gameWorld = {
       building,
+      vehicles,
       terrain: { heights: hf.cpuHeights, res: hf.res, worldSize: WORLD_SIZE },
       waterAt: (x, z) => hf.waterYAtCpu(x, z),
       lights: { sun: sunSky.sun, ambient: sunSky.hemi },
