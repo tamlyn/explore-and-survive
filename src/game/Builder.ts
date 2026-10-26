@@ -13,7 +13,7 @@ import type { Vec3 } from './PlayerMotor';
 import type { Sfx } from './Sfx';
 
 /** wood per piece */
-export const PIECE_COST = 5;
+export const PIECE_COST = 1;
 
 export interface GhostView {
   /** where `p` would go, or nothing; `ok` when it can be built there */

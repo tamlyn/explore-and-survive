@@ -15,5 +15,5 @@ export default defineConfig(({ command }) => ({
   esbuild: {
     target: "esnext",
   },
-  base: command === "build" ? "/laas/" : "/",
+  base: command === "build" ? "/explore-and-survive/" : "/",
 }));

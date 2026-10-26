@@ -104,6 +104,8 @@ const WORLD_EDGE_MARGIN = 2;
 const DOWN = { x: 0, y: -1, z: 0 };
 /** for scenes that don't draw building */
 const UNSEEN: PieceView & GhostView = { add: () => 0, remove: () => {}, wear: () => {}, ghost: () => {} };
+/** enough to build a first shelter before felling a tree */
+const START_WOOD = 10;
 /** a felled tree's wood comes as logs of up to this much */
 const WOOD_PER_LOG = 3;
 
@@ -303,7 +305,8 @@ export class Game {
             },
           )
         : null;
-    const carried = { wood: 0, metal: 0 };
+    const carried = { wood: START_WOOD, metal: 0 };
+    hud.carry(carried);
     const builder = new Builder({ building, ghost: buildingView, sfx, hud }, carried, motor, groundAt);
     const swing = new Swing(AXE);
     const arms = new Arms({

@@ -93,7 +93,7 @@ let failShown = false;
 export function failLoud(title: string, details: string[]): void {
   if (window.__laas) window.__laas.error = `${title}\n${details.join('\n')}`;
   // eslint-disable-next-line no-console
-  console.error('[LAAS FATAL]', title, details);
+  console.error('[E&S FATAL]', title, details);
   if (failShown) return;
   failShown = true;
 

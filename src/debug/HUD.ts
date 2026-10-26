@@ -77,7 +77,7 @@ export class Hud {
     const s = this.engine.stats;
     const fmt = (n: number): string => n.toLocaleString('en-US');
     const lines: string[] = [
-      `LAAS  seed=${this.params.seed} scene=${this.params.scene} T=${this.params.timeOfDay}`,
+      `E&S  seed=${this.params.seed} scene=${this.params.scene} T=${this.params.timeOfDay}`,
       `${s.fps.toFixed(0)} fps  ${s.frameMs.toFixed(2)} ms (p95 ${s.frameMsP95.toFixed(2)})`,
       `draws ${fmt(s.drawCalls)}  tris ${fmt(s.triangles)}`,
       this.params.prof

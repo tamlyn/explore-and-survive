@@ -33,7 +33,7 @@ async function boot(): Promise<void> {
   const diag = await probeWebGPU();
   hooks.diag = diag;
   if (!diag.ok) {
-    failLoud('WebGPU unavailable — LAAS has no fallback by design', [
+    failLoud('WebGPU unavailable — E&S has no fallback by design', [
       diag.reason ?? 'unknown reason',
       '',
       'Chrome exposes WebGPU here, but no usable GPU adapter came up. Check:',
