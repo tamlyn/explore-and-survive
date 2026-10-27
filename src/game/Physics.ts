@@ -93,6 +93,15 @@ export class Physics {
     this.world.step();
   }
 
+  /** let queries see colliders added or moved since the last step, without
+   *  moving anything */
+  refresh(): void {
+    const dt = this.world.timestep;
+    this.world.timestep = 0;
+    this.world.step();
+    this.world.timestep = dt;
+  }
+
   /** a static collider of the given surface */
   addCollider(desc: RAPIER.ColliderDesc, surface: Surface): RAPIER.Collider {
     const collider = this.world.createCollider(desc);

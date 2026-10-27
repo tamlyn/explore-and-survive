@@ -6,7 +6,7 @@
 
 import type { Checkpoint } from '../world/CheckpointPlan';
 import type { Checkpoints } from './Checkpoints';
-import type { GameHud } from './GameHud';
+import { type GameHud, title } from './GameHud';
 import type { Material } from './Loot';
 import type { PlayerInput } from './Player';
 import type { Vec3 } from './PlayerMotor';
@@ -76,7 +76,7 @@ export class Garage {
       ...KINDS.map((k, i) => {
         const { name, price } = VEHICLES[k];
         const short = this.wallet.metal < price ? '   (not enough)' : '';
-        return `${i + 1}  ${name[0]!.toUpperCase()}${name.slice(1).padEnd(width - 1)}${String(price).padStart(3)} metal${short}`;
+        return `${i + 1}  ${title(name).padEnd(width)}${String(price).padStart(3)} metal${short}`;
       }),
       '',
       `You have ${this.wallet.metal} metal · B closes`,

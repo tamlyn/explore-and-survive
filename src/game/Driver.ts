@@ -15,10 +15,10 @@ const MAX_FRAME = 0.25;
 const LOOK_YAW = 2.6;
 const LOOK_PITCH = 1.2;
 /** the view eases back ahead after the mouse rests this long (s)… */
-const RECENTRE_AFTER = 1.2;
+const RECENTER_AFTER = 1.2;
 /** …at this rate (1/s), once the car is moving faster than this (m/s) */
-const RECENTRE_RATE = 2;
-const RECENTRE_SPEED = 3;
+const RECENTER_RATE = 2;
+const RECENTER_SPEED = 3;
 
 export class Driver {
   /** where the driver looks, from straight ahead: yaw left +, pitch up + */
@@ -69,8 +69,8 @@ export class Driver {
     this.lookYaw = Math.max(-LOOK_YAW, Math.min(LOOK_YAW, this.lookYaw - look.yaw));
     this.lookPitch = Math.max(-LOOK_PITCH, Math.min(LOOK_PITCH, this.lookPitch - look.pitch));
     this.resting = look.yaw || look.pitch ? 0 : this.resting + dt;
-    if (this.resting > RECENTRE_AFTER && Math.abs(v.speed) > RECENTRE_SPEED) {
-      const k = Math.exp(-RECENTRE_RATE * dt);
+    if (this.resting > RECENTER_AFTER && Math.abs(v.speed) > RECENTER_SPEED) {
+      const k = Math.exp(-RECENTER_RATE * dt);
       this.lookYaw *= k;
       this.lookPitch *= k;
     }

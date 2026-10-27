@@ -26,14 +26,18 @@ class Dummy implements Hittable {
   }
 }
 
-function setup(water = -100, immune?: (t: Hittable) => boolean): { fleet: Vehicles; wrecks: Vehicle[]; rams: number[] } {
+/** rising towards −z by `slope` (m per m) */
+function setup(water = -100, immune?: (t: Hittable) => boolean, slope = 0): { fleet: Vehicles; wrecks: Vehicle[]; rams: number[] } {
   const res = 129;
-  physics = new Physics(rapier, { heights: new Float32Array(res * res), res, worldSize: 1024 });
+  const worldSize = 1024;
+  const heights = new Float32Array(res * res);
+  for (let j = 0; j < res; j++) heights.fill(-((j + 0.5) / res - 0.5) * worldSize * slope, j * res, (j + 1) * res);
+  physics = new Physics(rapier, { heights, res, worldSize });
   const wrecks: Vehicle[] = [];
   const rams: number[] = [];
   const fleet = new Vehicles(
     physics,
-    { waterAt: () => water, groundAt: () => 0, edge: 500 },
+    { waterAt: () => water, groundAt: (_, z) => -z * slope, edge: 500 },
     { create: () => VIEW },
     { rammed: (_, d) => rams.push(d), wrecked: (v) => wrecks.push(v) },
     immune,
@@ -81,6 +85,14 @@ describe('Vehicles', () => {
     expect(Math.abs(v.yaw)).toBeGreaterThan(1);
   });
 
+  it('faces the way asked up a gentle slope', () => {
+    const { fleet } = setup(-100, undefined, 1 / 8);
+    const v = fleet.place('rover', 0, 0, 0)!;
+    const t = v.body.translation();
+    expect(Math.hypot(t.x, t.z)).toBeLessThan(0.1);
+    expect(v.yaw).toBeCloseTo(0);
+  });
+
   it('puts nothing down in a lake', () => {
     const { fleet } = setup(5);
     expect(fleet.place('buggy', 0, 0, 0)).toBeNull();
@@ -109,6 +121,31 @@ describe('Vehicles', () => {
     expect(robot.taken[0]).toBeGreaterThan(40);
     expect(rams).toEqual(robot.taken);
     expect(v.health.hp).toBeLessThan(VEHICLES.buggy.hp);
+  });
+
+  it('hurts nothing it only passes by', () => {
+    const { fleet } = setup();
+    const v = fleet.place('buggy', 0, 0, 0)!;
+    const beside = new Dummy();
+    post(VEHICLES.buggy.hull.half.x + 0.7, -30, beside);
+    run(fleet, 0.5);
+    v.driven = true;
+    v.controls.throttle = 1;
+    run(fleet, 4);
+    expect(v.body.translation().z).toBeLessThan(-40);
+    expect(beside.taken).toEqual([]);
+  });
+
+  it('rams what it reverses into', () => {
+    const { fleet } = setup();
+    const v = fleet.place('buggy', 0, 0, 0)!;
+    const behind = new Dummy();
+    post(0, 20, behind);
+    run(fleet, 0.5);
+    v.driven = true;
+    v.controls.throttle = -1;
+    run(fleet, 5);
+    expect(behind.taken.length).toBe(1);
   });
 
   it('does no harm at a crawl', () => {

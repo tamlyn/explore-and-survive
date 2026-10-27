@@ -60,9 +60,7 @@ class Car implements VehicleView {
     light: (m: ReturnType<typeof vehicleMaterial>['material']) => void,
   ) {
     const body = vehicleMaterial();
-    const tyre = vehicleMaterial(t.wheels[0]!.hub.y, body.wear);
     light(body.material);
-    light(tyre.material);
     this.worn = [body.wear];
     const shell = new Mesh(t.body, body.material);
     this.root.add(shell);
@@ -71,6 +69,9 @@ class Car implements VehicleView {
     for (const w of t.wheels) {
       const hub = new Group();
       hub.position.copy(w.hub);
+      // each wheel's mud line from its own hub height
+      const tyre = vehicleMaterial(w.hub.y, body.wear);
+      light(tyre.material);
       const mesh = new Mesh(w.geometry, tyre.material);
       hub.add(mesh);
       this.root.add(hub);

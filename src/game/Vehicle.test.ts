@@ -126,6 +126,14 @@ describe('Vehicle', () => {
     expect(v.body.translation().z).toBeGreaterThanOrEqual(-20.01);
   });
 
+  it('stays put while the physics only refreshes its queries', () => {
+    const v = setup('buggy');
+    v.body.setLinvel({ x: 0, y: -3, z: 2 }, true);
+    for (let i = 0; i < 20; i++) physics!.refresh();
+    const { x, y, z } = v.body.translation();
+    expect([x, y, z].map((n) => +n.toFixed(6))).toEqual([0, 0.3, 0]);
+  });
+
   it('gets back on its wheels', () => {
     const v = setup('rover');
     v.body.setRotation({ x: 1, y: 0, z: 0, w: 0 }, true);

@@ -25,7 +25,7 @@ const LIT = 'rgba(255,255,255,0.95)';
 const UNLIT = 'rgba(255,255,255,0.45)';
 const MATERIAL_COLOR: Record<Material, string> = { wood: 'rgb(176,124,74)', metal: 'rgb(170,180,190)' };
 
-function title(name: string): string {
+export function title(name: string): string {
   return `${name[0]!.toUpperCase()}${name.slice(1)}`;
 }
 

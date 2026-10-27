@@ -98,7 +98,7 @@ export class Vehicle implements Hittable {
         .setAngularDamping(0.6)
         .setCcdEnabled(true),
     );
-    const { centre: c, half: h } = spec.hull;
+    const { center: c, half: h } = spec.hull;
     const b = spec.balance;
     const m = spec.mass;
     this.collider = world.createCollider(

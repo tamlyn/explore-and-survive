@@ -250,6 +250,8 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     }
   }
 
+  // fetched alongside the rest, wanted only once the game world is put together
+  const vehicleModels = hf.cpuHeights ? VehicleModels.load(ablate.has('gi') ? null : gi, canopyTex) : null;
   const robotModels = enemySpawns.length
     ? await RobotModels.load(
         enemySpawns.map((e) => e.kind),
@@ -366,10 +368,10 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
     ground: hf.heightAtCpu(x, z),
     water: hf.waterYAtCpu(x, z),
   });
-  if (hf.cpuHeights) {
+  if (hf.cpuHeights && vehicleModels) {
     const building = new BuildingView(ablate.has('gi') ? null : gi, canopyTex);
     engine.scene.add(...building.meshes);
-    const vehicles = await VehicleModels.load(ablate.has('gi') ? null : gi, canopyTex);
+    const vehicles = await vehicleModels;
     engine.scene.add(vehicles.group);
     engine.onUpdate(() => vehicles.update());
     ctx.gameWorld = {

@@ -24,9 +24,9 @@ export interface VehicleSpec {
   hp: number;
   /** kg */
   mass: number;
-  /** the collider: a box about `centre` */
-  hull: { centre: Vec3; half: Vec3 };
-  /** the centre of mass, kept low so it doesn't roll over at every bend */
+  /** the collider: a box about `center` */
+  hull: { center: Vec3; half: Vec3 };
+  /** the center of mass, kept low so it doesn't roll over at every bend */
   balance: Vec3;
   /** front left, front right, rear left, rear right */
   wheels: WheelSpec[];
@@ -65,7 +65,7 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     price: 15,
     hp: 250,
     mass: 600,
-    hull: { centre: { x: 0, y: 0.85, z: 0.15 }, half: { x: 0.9, y: 0.5, z: 1.45 } },
+    hull: { center: { x: 0, y: 0.85, z: 0.15 }, half: { x: 0.9, y: 0.5, z: 1.45 } },
     balance: { x: 0, y: 0.3, z: 0.1 },
     wheels: wheels({ x: 0.55, y: 0.255, z: -1.03 }, { x: 0.76, y: 0.37, z: 1.03 }, 0.253, 0.31, false),
     suspension: { travel: 0.3, stiffness: 30, compression: 2.4, relaxation: 3 },
@@ -83,7 +83,7 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     price: 30,
     hp: 500,
     mass: 1800,
-    hull: { centre: { x: 0, y: 1.1, z: 0.25 }, half: { x: 0.88, y: 0.75, z: 2.15 } },
+    hull: { center: { x: 0, y: 1.1, z: 0.25 }, half: { x: 0.88, y: 0.75, z: 2.15 } },
     balance: { x: 0, y: 0.45, z: 0.1 },
     wheels: wheels({ x: 0.708, y: 0.37, z: -1.229 }, { x: 0.708, y: 0.37, z: 1.229 }, 0.37, 0.37, true),
     suspension: { travel: 0.25, stiffness: 28, compression: 2.4, relaxation: 3 },

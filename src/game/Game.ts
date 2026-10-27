@@ -315,7 +315,8 @@ export class Game {
               if (this.attached && v === driver?.vehicle) this.attached.thrownFrom = v;
             },
           },
-          (t) => t === target,
+          // nor what the player built: a car drives up their ramps
+          (t) => t === target || building.owns(t),
         )
       : null;
     // on foot or at the wheel, the world moves on at the same fixed rate
@@ -613,6 +614,7 @@ export class Game {
   }
 
   private die(a: Attached): void {
+    a.garage?.close();
     a.deadFor = 0;
     a.arms.active = false;
     a.hud.visible = true;
@@ -666,7 +668,7 @@ export class Game {
 
   private spotNear(a: Attached, x: number, z: number): Vec3 {
     a.obstacles?.update(x, z);
-    a.physics.step(); // new colliders reach queries only after a step
+    a.physics.refresh();
     const { heights, res, worldSize } = a.world.terrain;
     return a.motor.clearSpotNear(
       x,
@@ -732,7 +734,7 @@ export class Game {
     const [x, y, z] = pose.p;
     // nothing steps the physics while flying, so robots woken since would
     // be invisible to the ray
-    if (this.modeV === 'fly') a.physics.step();
+    if (this.modeV === 'fly') a.physics.refresh();
     const hit = traceShot(
       { physics: a.physics, obstacles: a.world.obstacles, waterAt: a.world.waterAt },
       { x, y, z },
