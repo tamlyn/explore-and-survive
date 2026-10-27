@@ -33,8 +33,10 @@ export interface VehicleSpec {
   /** how far the springs stretch beyond the wheels' rest (m), and how stiff
    *  and damped they are (per unit of mass, as Rapier wants) */
   suspension: { travel: number; stiffness: number; compression: number; relaxation: number };
-  /** driving force on each driven wheel (N) */
+  /** driving force on each driven wheel, pulling away (N)… */
   engine: number;
+  /** …until force × speed reaches this, as if changing up a gear (W) */
+  power: number;
   /** braking impulse on each wheel */
   brake: number;
   /** grip before a tyre slides */
@@ -70,6 +72,7 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     wheels: wheels({ x: 0.55, y: 0.255, z: -1.03 }, { x: 0.76, y: 0.37, z: 1.03 }, 0.253, 0.31, false),
     suspension: { travel: 0.3, stiffness: 30, compression: 2.4, relaxation: 3 },
     engine: 4500,
+    power: 18000,
     brake: 25,
     grip: 2.6,
     topSpeed: 24,
@@ -88,6 +91,7 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     wheels: wheels({ x: 0.708, y: 0.37, z: -1.229 }, { x: 0.708, y: 0.37, z: 1.229 }, 0.37, 0.37, true),
     suspension: { travel: 0.25, stiffness: 28, compression: 2.4, relaxation: 3 },
     engine: 6000,
+    power: 24000,
     brake: 60,
     grip: 2.2,
     topSpeed: 20,

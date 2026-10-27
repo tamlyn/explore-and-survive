@@ -181,10 +181,10 @@ export class Vehicle implements Hittable {
     let brake = live ? 0 : spec.brake * PARKED_BRAKE;
     if (throttle > 0) {
       if (s < -CREEP) brake = spec.brake;
-      else if (s < spec.topSpeed) engine = throttle * spec.engine;
+      else if (s < spec.topSpeed) engine = throttle * this.pull(s);
     } else if (throttle < 0) {
       if (s > CREEP) brake = spec.brake;
-      else if (s > -spec.topSpeed * REVERSE.speed) engine = throttle * spec.engine * REVERSE.force;
+      else if (s > -spec.topSpeed * REVERSE.speed) engine = throttle * this.pull(s) * REVERSE.force;
     } else if (live && Math.abs(s) < CREEP) {
       // stopped on a hill, it holds rather than rolling away
       brake = spec.brake * PARKED_BRAKE;
@@ -201,6 +201,11 @@ export class Vehicle implements Hittable {
     });
     this.keepIn(world.edge);
     ctl.updateVehicle(dt, this.physics.rapier.QueryFilterFlags.EXCLUDE_KINEMATIC | this.physics.rapier.QueryFilterFlags.EXCLUDE_DYNAMIC);
+  }
+
+  /** the engine's force on each driven wheel at speed `s` */
+  private pull(s: number): number {
+    return Math.min(this.spec.engine, this.spec.power / Math.abs(s));
   }
 
   /** after the physics world's step: remember where it got to */
