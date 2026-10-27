@@ -26,24 +26,35 @@ class Dummy implements Hittable {
   }
 }
 
-/** rising towards −z by `slope` (m per m) */
-function setup(water = -100, immune?: (t: Hittable) => boolean, slope = 0): { fleet: Vehicles; wrecks: Vehicle[]; rams: number[] } {
-  const res = 129;
-  const worldSize = 1024;
+/** level ground, unless `ground` says otherwise */
+function setup(
+  water = -100,
+  immune?: (t: Hittable) => boolean,
+  ground: (x: number, z: number) => number = () => 0,
+): { fleet: Vehicles; wrecks: Vehicle[]; rams: number[] } {
+  const res = 257;
+  const worldSize = 512;
   const heights = new Float32Array(res * res);
-  for (let j = 0; j < res; j++) heights.fill(-((j + 0.5) / res - 0.5) * worldSize * slope, j * res, (j + 1) * res);
+  const at = (n: number): number => ((n + 0.5) / res - 0.5) * worldSize;
+  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) heights[j * res + i] = ground(at(i), at(j));
   physics = new Physics(rapier, { heights, res, worldSize });
   const wrecks: Vehicle[] = [];
   const rams: number[] = [];
   const fleet = new Vehicles(
     physics,
-    { waterAt: () => water, groundAt: (_, z) => -z * slope, edge: 500 },
+    { waterAt: () => water, groundAt: ground, edge: 250 },
     { create: () => VIEW },
     { rammed: (_, d) => rams.push(d), wrecked: (v) => wrecks.push(v) },
     immune,
   );
   return { fleet, wrecks, rams };
 }
+
+/** rising towards −z by `rise` (m per m) */
+const slope =
+  (rise: number) =>
+  (_: number, z: number): number =>
+    -z * rise;
 
 function run(fleet: Vehicles, seconds: number): void {
   for (let t = 0; t < seconds; t += FIXED_DT) {
@@ -86,11 +97,16 @@ describe('Vehicles', () => {
   });
 
   it('faces the way asked up a gentle slope', () => {
-    const { fleet } = setup(-100, undefined, 1 / 8);
+    const { fleet } = setup(-100, undefined, slope(1 / 8));
     const v = fleet.place('rover', 0, 0, 0)!;
     const t = v.body.translation();
     expect(Math.hypot(t.x, t.z)).toBeLessThan(0.1);
     expect(v.yaw).toBeCloseTo(0);
+  });
+
+  it('puts nothing down on a steep hillside', () => {
+    const { fleet } = setup(-100, undefined, slope(0.6));
+    expect(fleet.place('buggy', 0, 0, 0)).toBeNull();
   });
 
   it('puts nothing down in a lake', () => {
@@ -170,6 +186,31 @@ describe('Vehicles', () => {
     v.controls.throttle = 1;
     run(fleet, 5);
     expect(driver.taken).toEqual([]);
+  });
+
+  it('puts a flipped car back on its wheels where it lies, if that is flat', () => {
+    const { fleet } = setup();
+    const v = fleet.place('rover', 0, 0, 0)!;
+    v.body.setRotation({ x: 0, y: 0, z: 1, w: 0 }, true);
+    run(fleet, 2);
+    expect(v.upright).toBe(false);
+    expect(fleet.recover(v)).toBe(true);
+    run(fleet, 2);
+    expect(v.upright).toBe(true);
+    const t = v.body.translation();
+    expect(Math.hypot(t.x, t.z)).toBeLessThan(2);
+  });
+
+  it('lifts a car out of a ditch onto flat ground beside it', () => {
+    // a steep-sided ditch along x, 6 m deep and 20 m across
+    const { fleet } = setup(-100, undefined, (_, z) => Math.min(0, Math.abs(z) * 0.6 - 6));
+    const v = fleet.place('buggy', 0, 30, 0)!;
+    v.moveTo({ x: 0, y: -5, z: -2 }, 0.3);
+    run(fleet, 2);
+    expect(fleet.recover(v)).toBe(true);
+    run(fleet, 2);
+    expect(v.upright).toBe(true);
+    expect(Math.abs(v.body.translation().z)).toBeGreaterThan(10);
   });
 
   it('says when a car is wrecked', () => {

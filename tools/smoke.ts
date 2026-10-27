@@ -179,6 +179,17 @@ if (beacon) {
   const drove = (await page.evaluate(CAR)) as Car;
   const dist = Math.hypot(drove.x - parked.x, drove.z - parked.z);
   check(parked.driving && dist > 5, `E gets in and W drives (${dist.toFixed(1)} m in 2.5 s)`);
+
+  // R gets the car unstuck, for a wood and a metal
+  const HAUL = `(() => { const c = window.__laasDbg.game.attached.carried; return [c.wood, c.metal]; })()`;
+  const before = (await page.evaluate(HAUL)) as number[];
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(300);
+  const after = (await page.evaluate(HAUL)) as number[];
+  check(
+    after[0] === before[0]! - 1 && after[1] === before[1]! - 1,
+    `R gets the car unstuck for 1 wood and 1 metal (${before.join('/')} → ${after.join('/')})`,
+  );
   await page.keyboard.press('KeyE');
   await page.waitForTimeout(300);
   const out = (await page.evaluate(CAR)) as Car;

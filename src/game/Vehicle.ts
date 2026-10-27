@@ -238,13 +238,18 @@ export class Vehicle implements Hittable {
     return out;
   }
 
-  /** back on its wheels, a little above where it was, facing the same way */
-  right(): void {
-    const t = this.body.translation();
-    this.body.setTranslation({ x: t.x, y: t.y + 1, z: t.z }, true);
-    this.body.setRotation(yawQuat(this.yaw), true);
+  /** set down at `at` on its wheels, facing `yaw`, at rest */
+  moveTo(at: Vec3, yaw: number): void {
+    const q = yawQuat(yaw);
+    const p = { x: at.x, y: at.y, z: at.z };
+    this.body.setTranslation(p, true);
+    this.body.setRotation(q, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    // drawn straight there, not swept across from where it was
+    Object.assign(this.cur.p, p);
+    Object.assign(this.cur.q, q);
+    copyPose(this.cur, this.prev);
   }
 
   /** whether it's in deep water, which holds it up and drags it back */

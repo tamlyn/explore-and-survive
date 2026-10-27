@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { loadRapier, Physics, type Rapier } from './Physics';
+import { CELL, pieceBox, STOREY } from './Blueprint';
+import { boxColliderDesc, loadRapier, Physics, type Rapier } from './Physics';
 import { FIXED_DT } from './Player';
 import { Vehicle, type VehicleWorld } from './Vehicle';
 import { KINDS, VEHICLES, type VehicleKind } from './VehicleSpec';
@@ -55,6 +56,25 @@ describe.each(KINDS)('Vehicle (%s)', (kind) => {
     run(v, 20);
     expect(v.speed).toBeLessThan(VEHICLES[kind].topSpeed + 1);
     expect(v.speed).toBeGreaterThan(VEHICLES[kind].topSpeed - 3);
+  });
+
+  it('climbs two storeys of building ramps from a standstill', () => {
+    const v = setup(kind);
+    const { center, half } = VEHICLES[kind].hull;
+    // its nose half a metre short of the ramps' foot
+    v.moveTo({ x: -CELL / 2, y: 0.3, z: -CELL + 0.5 - center.z + half.z }, 0);
+    for (const [j, y] of [[-2, 0], [-3, STOREY]] as const) {
+      physics!.addCollider(boxColliderDesc(rapier, pieceBox({ kind: 'ramp', i: -1, j, y, dir: 0 })), 'wood');
+    }
+    run(v, 1);
+    v.driven = true;
+    v.controls.throttle = 1;
+    let top = 0;
+    for (let t = 0; t < 6; t += 0.1) {
+      run(v, 0.1);
+      top = Math.max(top, v.body.translation().y);
+    }
+    expect(top).toBeGreaterThan(STOREY * 2);
   });
 
   it('steers left and right', () => {
@@ -134,14 +154,16 @@ describe('Vehicle', () => {
     expect([x, y, z].map((n) => +n.toFixed(6))).toEqual([0, 0.3, 0]);
   });
 
-  it('gets back on its wheels', () => {
+  it('is set down on its wheels where it is moved to, and drawn there at once', () => {
     const v = setup('rover');
     v.body.setRotation({ x: 1, y: 0, z: 0, w: 0 }, true);
     run(v, 2);
     expect(v.upright).toBe(false);
-    v.right();
+    v.moveTo({ x: 10, y: 0.3, z: 5 }, 1);
+    expect(v.pose(0, { p: { x: 0, y: 0, z: 0 }, q: { x: 0, y: 0, z: 0, w: 1 } }).p).toEqual({ x: 10, y: 0.3, z: 5 });
     run(v, 2);
     expect(v.upright).toBe(true);
+    expect(v.yaw).toBeCloseTo(1);
   });
 
   it('is wrecked when worn through, and goes nowhere', () => {

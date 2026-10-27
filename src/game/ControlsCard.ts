@@ -13,7 +13,7 @@ const CONTROLS: [string, string][] = [
   ['W / S, A / D', 'drive, brake and reverse, steer'],
   ['Space', 'handbrake (driving)'],
   ['C', 'driver\'s seat / chase view'],
-  ['R', 'back on your wheels (driving)'],
+  ['R', 'get unstuck, for 1 wood and 1 metal (driving)'],
   ['V', 'walk / fly'],
   ['Wheel', 'fly speed (flying)'],
   ['E / Q', 'fly up / down'],

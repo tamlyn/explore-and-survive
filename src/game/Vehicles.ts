@@ -6,6 +6,7 @@
  * and itself a little.
  */
 
+import type RAPIER from '@dimforge/rapier3d-compat';
 import type { Box } from '../world/Box';
 import type { Hittable, Physics } from './Physics';
 import type { Vec3 } from './PlayerMotor';
@@ -29,6 +30,8 @@ const PLACE_REACH = 14;
 const DROP = 0.25;
 /** …with this much clear ground ahead of it, to drive off (m) */
 const RUNWAY = 4;
+/** on ground no steeper than this under it (rise per m), so not in a ditch */
+const FLAT = 0.3;
 /** the player gets in from this close to the hull (m) */
 export const ENTER_REACH = 1.2;
 
@@ -84,6 +87,21 @@ export class Vehicles {
     });
     this.all.push({ vehicle, view: this.views.create(kind) });
     return vehicle;
+  }
+
+  /**
+   * `v` lifted out of wherever it's stuck and put back on its wheels on
+   * flat ground nearby, facing the way it was — or false if there's
+   * nowhere.
+   */
+  recover(v: Vehicle): boolean {
+    // trees streamed in since the last step count
+    this.physics.refresh();
+    const t = v.body.translation();
+    const spot = this.spotNear(v.kind, t.x, t.z, v.yaw, v.collider);
+    if (!spot) return false;
+    v.moveTo(spot, spot.yaw);
+    return true;
   }
 
   /** the nearest car the player at `feet` can get into, wrecks included */
@@ -143,12 +161,34 @@ export class Vehicles {
     }
   }
 
-  private spotNear(kind: VehicleKind, x: number, z: number, yaw: number): (Vec3 & { yaw: number }) | null {
+  private spotNear(
+    kind: VehicleKind,
+    x: number,
+    z: number,
+    yaw: number,
+    exclude?: RAPIER.Collider,
+  ): (Vec3 & { yaw: number }) | null {
     const { center, half } = VEHICLES[kind].hull;
     const ahead = { x: center.x, y: center.y, z: center.z - half.z - RUNWAY / 2 };
     const clear = (q: Quat, x: number, y: number, z: number, local: Vec3, hz: number): boolean => {
       const c = rotate(q, local, P);
-      return !this.physics.occupied({ x: x + c.x, y: y + c.y, z: z + c.z, hx: half.x, hy: half.y, hz, q: [q.x, q.y, q.z, q.w] });
+      return !this.physics.occupied(
+        { x: x + c.x, y: y + c.y, z: z + c.z, hx: half.x, hy: half.y, hz, q: [q.x, q.y, q.z, q.w] },
+        exclude,
+      );
+    };
+    // from the middle out to each corner, so a V-shaped ditch's sides count
+    const reach = Math.hypot(half.x, half.z);
+    const level = (q: Quat, x: number, z: number): boolean => {
+      const c = rotate(q, center, P);
+      const mid = this.world.groundAt(x + c.x, z + c.z);
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          rotate(q, { x: center.x + sx * half.x, y: 0, z: center.z + sz * half.z }, P);
+          if (Math.abs(this.world.groundAt(x + P.x, z + P.z) - mid) > FLAT * reach) return false;
+        }
+      }
+      return true;
     };
     for (let r = 0; r <= PLACE_REACH; r += 1.5) {
       const n = r === 0 ? 1 : Math.ceil((2 * Math.PI * r) / 1.5);
@@ -162,7 +202,7 @@ export class Vehicles {
         const y = ground + DROP;
         for (const turn of TURNS) {
           const q = yawQuat(yaw + turn);
-          if (!clear(q, px, y, pz, center, half.z)) continue;
+          if (!level(q, px, pz) || !clear(q, px, y, pz, center, half.z)) continue;
           // the runway ahead stands on its own ground, so a slope isn't in the way
           const c = rotate(q, ahead, P);
           const runwayY = this.world.groundAt(px + c.x, pz + c.z) + DROP;

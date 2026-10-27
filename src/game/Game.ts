@@ -118,6 +118,10 @@ const POSE: Pose = { p: { x: 0, y: 0, z: 0 }, q: { x: 0, y: 0, z: 0, w: 1 } };
 const UNSEEN: PieceView & GhostView = { add: () => 0, remove: () => {}, wear: () => {}, ghost: () => {} };
 /** enough to build a first shelter before felling a tree */
 const START_WOOD = 10;
+/** a start towards a first car */
+const START_METAL = 10;
+/** what R takes, of each, to get a stuck car back on flat ground */
+const RECOVER_COST = 1;
 /** a felled tree's wood comes as logs of up to this much */
 const WOOD_PER_LOG = 3;
 /** a car wrecked under the player hurts them this much as they're thrown out */
@@ -378,7 +382,7 @@ export class Game {
             },
           )
         : null;
-    const carried = { wood: START_WOOD, metal: 0 };
+    const carried = { wood: START_WOOD, metal: START_METAL };
     hud.carry(carried);
     const garage =
       vehicles && checkpoints ? new Garage({ vehicles, checkpoints, hud, sfx }, carried) : null;
@@ -554,7 +558,7 @@ export class Game {
     const { input } = this;
     const v = a.driver.vehicle!;
     if (input.takePress('KeyC')) a.vehicleRig.view = a.vehicleRig.view === 'first' ? 'third' : 'first';
-    if (input.takePress('KeyR') && !v.upright) v.right();
+    if (input.takePress('KeyR')) this.recover(a, v);
     a.driver.update(dt, input);
     if (a.thrownFrom) {
       this.thrownOut(a);
@@ -567,8 +571,27 @@ export class Game {
     this.collect(a, pose.p);
     a.loot?.update(dt, pose.p);
     a.hud.car(v.health.hp / v.health.max);
-    a.hud.prompt(v.upright ? null : 'R  back on your wheels');
+    a.hud.prompt(v.upright ? null : `R  back on your wheels · ${RECOVER_COST} wood, ${RECOVER_COST} metal`);
     a.sfx.engine({ rev: Math.min(1, Math.abs(v.speed) / v.spec.topSpeed), load: Math.abs(v.controls.throttle) });
+  }
+
+  private recover(a: Attached, v: Vehicle): void {
+    const { carried, hud, sfx } = a;
+    if (carried.wood < RECOVER_COST || carried.metal < RECOVER_COST) {
+      hud.toast(`Getting it out takes ${RECOVER_COST} wood and ${RECOVER_COST} metal`);
+      sfx.click();
+      return;
+    }
+    if (!a.vehicles?.recover(v)) {
+      hud.toast('No flat ground near here');
+      sfx.click();
+      return;
+    }
+    carried.wood -= RECOVER_COST;
+    carried.metal -= RECOVER_COST;
+    hud.carry(carried);
+    a.vehicleRig.reset(v);
+    sfx.chime();
   }
 
   private getIn(a: Attached, v: Vehicle): void {

@@ -168,14 +168,23 @@ export class Physics {
     return found;
   }
 
-  /** whether anything at all, the ground included, cuts into a box */
-  occupied(b: Box): boolean {
+  /** whether anything at all but `exclude`, the ground included, cuts into
+   *  a box */
+  occupied(b: Box, exclude?: RAPIER.Collider): boolean {
     let found = false;
     const [x, y, z, w] = b.q;
-    this.world.intersectionsWithShape(b, { x, y, z, w }, new this.rapier.Cuboid(b.hx, b.hy, b.hz), () => {
-      found = true;
-      return false;
-    });
+    this.world.intersectionsWithShape(
+      b,
+      { x, y, z, w },
+      new this.rapier.Cuboid(b.hx, b.hy, b.hz),
+      () => {
+        found = true;
+        return false;
+      },
+      undefined,
+      undefined,
+      exclude,
+    );
     return found;
   }
 
